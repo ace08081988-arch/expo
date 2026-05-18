@@ -3,7 +3,7 @@
  */
 export interface FetchRequestInit {
   body?: BodyInit | null;
-  credentials?: RequestCredentials; // same-origin is not supported
+  credentials?: RequestCredentials;
   headers?: HeadersInit;
   method?: string;
   signal?: AbortSignal | null;

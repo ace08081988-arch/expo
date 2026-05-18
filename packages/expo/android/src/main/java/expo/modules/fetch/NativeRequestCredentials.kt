@@ -6,5 +6,6 @@ import expo.modules.kotlin.types.Enumerable
 
 internal enum class NativeRequestCredentials(val value: String) : Enumerable {
   INCLUDE("include"),
-  OMIT("omit")
+  OMIT("omit"),
+  SAME_ORIGIN("same-origin")
 }

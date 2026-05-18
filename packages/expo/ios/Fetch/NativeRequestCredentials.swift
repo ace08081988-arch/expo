@@ -8,4 +8,5 @@ import ExpoModulesCore
 internal enum NativeRequestCredentials: String, Enumerable {
   case include
   case omit
+  case sameOrigin = "same-origin"
 }

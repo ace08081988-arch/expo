@@ -25,7 +25,10 @@ internal final class ExpoURLSessionTask: NSObject, URLSessionTaskDelegate, URLSe
     URLProtocol.setProperty(requestInit.redirect == .follow, forKey: "shouldFollowRedirects", in: request)
     request.httpMethod = requestInit.method
     request.timeoutInterval = 0
-    if requestInit.credentials == .include {
+    // NOTE(@kitten): React Native has no calling document. Unless we thread through the URL
+    // for expo-router and store cookies permanently, the behaviour for same-origin must be
+    // the same as `include` for now
+    if requestInit.credentials == .include || requestInit.credentials == .sameOrigin {
       request.httpShouldHandleCookies = true
       if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
         request.allHTTPHeaderFields = HTTPCookie.requestHeaderFields(with: cookies)

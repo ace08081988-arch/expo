@@ -12,7 +12,7 @@ export declare class NativeRequest extends SharedObject {
 }
 
 export interface NativeRequestInit {
-  credentials?: RequestCredentials; // same-origin is not supported
+  credentials?: RequestCredentials;
   headers?: NativeHeadersType;
   method?: string;
   redirect?: RequestRedirect;

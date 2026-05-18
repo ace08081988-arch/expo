@@ -23,7 +23,10 @@ internal class NativeRequest(appContext: AppContext, internal val response: Nati
 
   fun start(client: OkHttpClient, url: URL, requestInit: NativeRequestInit, requestBody: ByteArray?) {
     val clientBuilder = client.newBuilder()
-    if (requestInit.credentials != NativeRequestCredentials.INCLUDE) {
+    // NOTE(@kitten): React Native has no calling document. Unless we thread through the URL
+    // for expo-router and store cookies permanently, the behaviour for same-origin must be
+    // the same as `include` for now
+    if (requestInit.credentials == NativeRequestCredentials.OMIT) {
       clientBuilder.cookieJar(CookieJar.NO_COOKIES)
     }
     if (requestInit.redirect != NativeRequestRedirect.FOLLOW) {
