@@ -1,244 +1,1329 @@
----
-title: Create and manage environment variables in EAS
-sidebar_title: Create and manage
-description: Learn how to create, scope, and consume environment variables with EAS dashboard and EAS CLI.
-searchRank: 7
----
-
-import { ContentSpotlight } from '~/ui/components/ContentSpotlight';
-import { Terminal } from '~/ui/components/Snippet';
-
-The following sections cover how to create, scope, and consume environment variables with EAS dashboard and EAS CLI.
-
-## Create environment variables
-
-- [**Choose an environment or multiple environments**](/eas/environment-variables/#available-environments): `development`, `preview`, and `production` are available by default. A variable can be reused across them or customized per environment.
-- [**Choose scope**](/eas/environment-variables/#scope): Project-wide variables apply to one project. Account-wide variables can be reused across projects and are merged with project variables at build time.
-- [**Choose visibility**](/eas/environment-variables/#visibility-settings-for-environment-variables): Use **secret** for values that should never leave EAS servers, **sensitive** for values that may be revealed locally, and **plain text** for non-sensitive values.
-
-### Create variables in the dashboard
-
-To create a new environment variable on EAS servers, in your project dashboard, you can navigate to the **Project settings** > [**Environment variables**](https://expo.dev/accounts/[account]/projects/[project]/environment-variables) and then click on the **Add Variables** button.
-
-<ContentSpotlight
-  alt="Environment variable form in an EAS project dashboard"
-  src="/static/images/env-vars/creation-form.png"
-  className="max-w-[600px]"
-/>
-
-Use the [environment variables creation form](https://expo.dev/accounts/[account]/projects/[project]/environment-variables) page to set the name, value, environment(s), visibility, and optional description.
-
-<ContentSpotlight
-  alt="Create an environment variable form"
-  src="/static/images/env-vars/add.png"
-  className="max-w-[600px]"
-/>
-
-Created variables appear in the list with their scope, visibility, and environment tags. Based on the environment variables in this example, the list may look like this:
-
-<ContentSpotlight
-  alt="List of successfully created environment variables"
-  src="/static/images/env-vars/list.png"
-  className="max-w-[600px]"
-/>
-
-In the above example list:
-
-- The `SENTRY_AUTH_TOKEN` variable is a sensitive environment variable. It is used to authenticate Sentry to upload source maps after builds and updates, and has to be accessible outside of EAS servers.
-- The `GOOGLE_SERVICES_JSON` variable is a secret environment variable and uses an uploaded file. It is used to authenticate Google to access the Google Services JSON file, and has to be stored securely on EAS servers. This uploaded JSON file is typically added to your project's **.gitignore**.
-- All other variables, such as `APP_VARIANT` and `EXPO_PUBLIC_API_URL`, are plain text environment variables.
-
-### Create variables with EAS CLI
-
-Use `eas env:create` to add variables and `eas env:list` to verify what is set.
-
-<Terminal
-  cmd={[
-    '# Example to create a new plain text environment variable for the preview environment',
-    '$ eas env:create --name EXPO_PUBLIC_API_URL --value https://example.app/staging --environment preview --visibility plaintext',
-    '',
-    '# Example to list all environment variables for the preview environment',
-    '$ eas env:list --environment preview',
-  ]}
-/>
-
-## Using environment variables in your code
-
-### Client-side values
-
-The environment variables with the [`EXPO_PUBLIC_`](/guides/environment-variables) prefix are available as `process.env` variables in your app's code. You can use them dynamically to configure your app behavior based on their values:
-
-```tsx
-import { Button } from 'react-native';
-
-function Post() {
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-
-  async function onPress() {
-    await fetch(apiUrl, {
-      /* @hide ... */
-      /* @end */
-    });
-  }
-
-  return <Button onPress={onPress} title="Post" />;
-}
-```
-
-In the above example, `EXPO_PUBLIC_API_URL` is used to dynamically set the API URL for the fetch request.
-
-> **warning** Do not put secrets in `EXPO_PUBLIC_` variables. Everything in client bundles is readable by end users.
-
-### Build-time and app config
-
-Other variables that are without the `EXPO_PUBLIC_` prefix can be used during [app config](/workflow/configuration) resolution to configure your app's behavior. For example, the `APP_VARIANT` variable is used to determine the app name, package name, and bundle identifier for the selected [app variant](/build-reference/variants/):
-
-Use non-prefixed variables in dynamic app config. Keep visibility at least **sensitive** if you need to resolve config locally (plain text and sensitive are readable in EAS CLI; secrets stay on the server).
-
-```js app.config.js
-const IS_DEV = process.env.APP_VARIANT === 'development';
-const IS_PREVIEW = process.env.APP_VARIANT === 'preview';
-
-const getUniqueIdentifier = () => {
-  if (IS_DEV) {
-    return 'com.yourname.stickersmash.dev';
-  }
-
-  if (IS_PREVIEW) {
-    return 'com.yourname.stickersmash.preview';
-  }
-
-  return 'com.yourname.stickersmash';
-};
-
-const getAppName = () => {
-  if (IS_DEV) {
-    return 'StickerSmash (Dev)';
-  }
-
-  if (IS_PREVIEW) {
-    return 'StickerSmash (Preview)';
-  }
-
-  return 'StickerSmash: Emoji Stickers';
-};
-
-export default {
-  /* @info Using `getAppName()` for "name" property */
-  name: getAppName(),
-  /* @end */
-  /* @hide ... */ /* @end */
-  ios: {
-    /* @info Using `getUniqueIdentifier()` for "bundleIdentifier" property */
-    bundleIdentifier: getUniqueIdentifier(),
-    /* @end */
-    /* @hide ... */ /* @end */
-  },
-  android: {
-    /* @info Using `getUniqueIdentifier()` for "package" property */
-    package: getUniqueIdentifier(),
-    /* @end */
-    /* @hide ... */ /* @end */
-  },
-};
-```
-
-### Secrets and file variables
-
-An environment variable such as `GOOGLE_SERVICES_JSON` is a secret file variable that is not readable outside of EAS servers and is used to provide the git ignored **google-services.json** file to an EAS Build job. To use it in the app config, you can use the `process.env` variable and provide a fallback value in case the variable is not set (for local development when you usually have it inside your project's repository):
-
-```js app.config.js
-export default {
-  android: {
-    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? '/local/path/to/google-services.json',
-  },
-};
-```
-
-## Manage environment variables
-
-You can use [EAS dashboard](https://expo.dev/accounts/[account]/projects/[project]/environment-variables) in your project or account to create, update, and delete environment variables.
-
-You can also use EAS CLI to manage them. The following commands are provided as examples for the `production` environment. When using these commands, replace `production` with the environment you want to manage.
-
-<Terminal
-  cmd={[
-    '# To create a new environment variable',
-    '$ eas env:create --name EXPO_PUBLIC_API_URL --value https://example.app/staging --environment production --visibility plaintext',
-    '',
-    '# To update an existing environment variable',
-    '$ eas env:update --name EXPO_PUBLIC_API_URL --value https://example.app/staging --environment production --visibility plaintext',
-    '',
-    '# To delete an existing environment variable',
-    '$ eas env:delete',
-    '',
-    '# To list all environment variables',
-    '$ eas env:list --environment production',
-    '',
-    '# To pull environment variables into a .env file',
-    '$ eas env:pull --environment production',
-  ]}
-/>
-
-> **info** **Tip:** See the [EAS CLI command reference](https://github.com/expo/eas-cli/blob/main/packages/eas-cli/README.md) for more information about the above commands.
-
-### Pull variables for local development
-
-The efficient way to use EAS environment variables for local development is to pull them into a **.env** file using the `eas env:pull --environment environment-name` command:
-
-For example, to pull the environment variables for the `production` environment into a **.env** file, you can run:
-
-<Terminal cmd={['$ eas env:pull --environment production']} />
-
-The created file may look like the following:
-
-```bash .env.local
-# Environment: production
-
-APP_VARIANT=development
-EXPO_PUBLIC_API_URL=https://staging.my-api-url.mycompany.com
-# GOOGLE_SERVICES_JSON=***** (secret variables are not available for reading)
-SENTRY_AUTH_TOKEN=token
-```
-
-> **info** **Tip:** Keep generated **.env** files in **.gitignore** to avoid leaks and precedence conflicts between local and cloud jobs.
-
-You can also use the **Export** option in the EAS dashboard to download the file and store it inside your project.
-
-<ContentSpotlight
-  alt="Export environment variables to a .env file from the EAS dashboard"
-  src="/static/images/env-vars/export.png"
-  className="max-w-[600px]"
-/>
-
-## Custom environments
-
-> **important** Creating custom environments is available for [Enterprise and production](/billing/plans/#plans) plans.
-
-The three default environments are sufficient for most use-cases, but if your project relies on complex workflows and requires the flexibility to create more environments, using custom environments may come in handy.
-
-### Create a custom environment in EAS dashboard
-
-To create a custom environment in EAS dashboard:
-
-- In your project, navigate to the **Project settings** > [**Environment variables**](https://expo.dev/accounts/[account]/projects/[project]/environment-variables) and then click on the **Add Variables** button.
-- Under **Environments**, click the **plus (+) icon** to enter a name for a custom environment.
-
-<ContentSpotlight
-  alt="Create a custom environment in an EAS project dashboard"
-  src="/static/images/env-vars/custom-environment.png"
-  className="max-w-[600px]"
-/>
-
-- After creating the environment, it will be pre-selected under the **Custom environments** section.
-- As long as there is at least one environment variable linked to this environment, it will show up as a selectable option for all environment variables for that account or project.
-
-### Create a custom environment with EAS CLI
-
-To assign an environment variable to custom environments, use your custom environment name in place of the environment. For example, the command below creates a new variable `EXPO_PUBLIC_API_URL` and assigns it to the custom `staging` environment:
-
-<Terminal
-  cmd={[
-    '$ eas env:create --name EXPO_PUBLIC_API_URL --value https://example.app/staging --environment staging --visibility plaintext',
-  ]}
-/>
+# ACE STORE - Project TODO
+
+## Phase 1: Database Schema & Setup
+- [x] Schema: tabel categories, products, access_tokens, carts, cart_items, orders, order_items, crm_settings
+- [x] Jalankan migrasi database
+- [x] Setup konfigurasi awal dan environment variables
+
+## Phase 2: Backend tRPC Routers
+- [x] Router: produk (CRUD, list, detail, upload gambar S3)
+- [x] Router: kategori (CRUD)
+- [x] Router: akses terbatas (generate link, validasi token)
+- [x] Router: keranjang (add, update, remove, get)
+- [x] Router: pesanan (create, list, update status, detail)
+- [x] Router: payment (Midtrans, Stripe webhook)
+- [x] Router: admin (dashboard stats, laporan)
+- [x] Router: CRM settings (WhatsApp, Viber)
+
+## Phase 3: Frontend Pelanggan
+- [x] Halaman landing/akses terbatas (validasi token dari URL)
+- [x] Halaman katalog produk dengan filter kategori dan pencarian
+- [x] Halaman detail produk
+- [x] Komponen keranjang belanja (sidebar/drawer)
+- [x] Halaman checkout dengan form pengiriman
+- [x] Halaman konfirmasi pesanan dan status pembayaran
+- [x] Halaman riwayat pesanan pelanggan
+- [x] Navigasi dan layout pelanggan
+
+## Phase 4: Admin Panel
+- [x] Dashboard admin dengan statistik (total penjualan, pesanan, produk, revenue)
+- [x] Grafik revenue dan pesanan (recharts)
+- [x] Manajemen produk (CRUD dengan upload gambar S3)
+- [x] Manajemen kategori (CRUD)
+- [x] Manajemen pesanan dengan update status
+- [x] Manajemen akses link (generate, revoke, list)
+- [x] Pengaturan CRM (WhatsApp, Viber)
+- [x] Laporan stok produk menipis
+
+## Phase 5: Payment Gateway
+- [x] Integrasi Midtrans (transfer bank, e-wallet, kartu kredit) - siap dihubungkan via Secrets
+- [x] Integrasi Stripe (pembayaran internasional) - siap dihubungkan via Secrets
+- [x] Webhook handler untuk update status pembayaran
+- [x] Halaman sukses/gagal pembayaran
+
+## Phase 6: CRM & Notifikasi
+- [x] Integrasi WhatsApp CRM (notifikasi pesanan baru, konfirmasi pembayaran) - siap dihubungkan
+- [x] Integrasi Viber CRM (channel alternatif) - siap dihubungkan
+- [x] Notifikasi email owner (pesanan baru, pembayaran berhasil, stok menipis)
+- [x] Template pesan notifikasi
+
+## Phase 7: Testing & Deployment
+- [x] Unit tests untuk routers utama (14 tests passing)
+- [x] Validasi semua fitur
+- [x] Checkpoint dan delivery ke pengguna
+
+## Stripe Payment Integration
+- [x] Setup Stripe via webdev_add_feature
+- [x] Konfigurasi STRIPE_SECRET_KEY dan STRIPE_WEBHOOK_SECRET (auto-configured)
+- [x] Backend: Stripe Checkout Session untuk pembelian produk
+- [x] Backend: Stripe Subscription untuk layanan berlangganan
+- [x] Backend: Webhook endpoint /api/stripe/webhook dengan signature verification
+- [x] Frontend: Tombol bayar dengan Stripe di halaman checkout (redirect ke Stripe Checkout)
+- [x] Frontend: Halaman sukses dan gagal pembayaran Stripe dengan auto-verify
+- [x] Testing integrasi Stripe (7 tests passing)
+
+## Sales Analytics Dashboard & CRM Integration
+- [ ] Backend: analytics router (sales metrics, revenue trend, KPI)
+- [ ] Backend: customer analytics (top customers, order frequency, CLV)
+- [ ] Backend: product analytics (top products, category performance, low stock)
+- [ ] Backend: CRM analytics (WhatsApp/Viber activity, message stats)
+- [ ] Backend: date range filtering dan comparison (vs periode sebelumnya)
+- [ ] Frontend: Sales Overview Dashboard (KPI cards, revenue chart, order trend)
+- [ ] Frontend: Revenue breakdown by payment gateway (Stripe vs Midtrans)
+- [ ] Frontend: Customer Analytics page (segmentasi, top buyers, retention)
+- [ ] Frontend: Product Analytics page (top products, category chart, stok alert)
+- [ ] Frontend: CRM Analytics page (WhatsApp/Viber stats, conversation metrics)
+- [ ] Frontend: Export laporan ke CSV/Excel
+- [ ] Integrasi sidebar admin dengan menu Analytics
+- [ ] Vitest tests untuk analytics routers
+
+## Bug Fixes
+- [x] Fix React Error #310 di halaman admin (/admin) - crash saat dibuka (useEffect di render function, sudah diperbaiki dengan RootRedirect component)
+- [x] Fix SQL Error di getRevenueChart - DATE() dengan Drizzle ORM column reference
+
+## Checkout Payment - Bank Transfer & E-Wallet
+- [x] Frontend: Tampilkan Midtrans Snap popup di halaman checkout (bukan buka tab baru)
+- [x] Frontend: Pilihan metode pembayaran detail (Transfer Bank, E-Wallet, QRIS, Kartu Kredit)
+- [x] Frontend: Load Midtrans Snap.js dari CDN secara dinamis
+- [x] Backend: Expose MIDTRANS_CLIENT_KEY ke frontend via tRPC (configRouter.paymentConfig)
+- [x] Frontend: Fallback ke redirect URL jika Snap popup gagal
+- [x] Frontend: Handle callback sukses/gagal dari Midtrans Snap (onSuccess, onPending, onError, onClose)
+
+## Keamanan Admin Panel
+- [x] Blokir akses /admin/* untuk pelanggan (role=user) - redirect ke /store via AdminRoute guard di App.tsx
+- [x] Sembunyikan link "Admin" di navbar dari pelanggan (role=user) - sudah ada kondisi user?.role === "admin"
+- [x] Tambahkan AdminRoute component yang cek role sebelum render halaman admin
+
+## Harga Khusus Per Pelanggan (Customer Pricing)
+- [x] Database: Tambah tabel `token_prices` (tokenId, productId, price) dengan unique constraint
+- [x] Backend: Procedure `products.list` ambil harga sesuai token pelanggan (getProductsWithTokenPricing)
+- [x] Backend: Procedure `products.bySlug` ambil harga sesuai token
+- [x] Backend: tokenPricingRouter (listByToken, upsert, delete, deleteAll)
+- [x] Frontend: Katalog tampilkan harga khusus token (harga default dicoret)
+- [x] Frontend: ProductDetail tampilkan harga khusus token dengan diskon
+- [x] Frontend: Admin - panel harga khusus per token di AdminAccessLinks (expand row)
+
+## Hutang Piutang Pelanggan
+- [x] Database: Tabel `receivables` (hutang/piutang per pelanggan per transaksi)
+- [x] Database: Tabel `receivable_payments` (catatan cicilan/pelunasan)
+- [x] Backend: Auto-catat hutang saat order dibuat dengan metode "bayar nanti"
+- [x] Backend: Procedure CRUD hutang piutang (list, detail, tambah manual, catat bayar)
+- [x] Backend: Summary total hutang untuk dashboard admin
+- [x] Frontend: Checkout - tambah opsi "Bayar Nanti (Tempo)" dengan field jatuh tempo
+- [x] Frontend: Halaman admin /admin/receivables - daftar hutang dengan filter status
+- [x] Frontend: Detail hutang pelanggan - riwayat transaksi dan cicilan
+- [x] Frontend: Form catat pembayaran manual (tunai, transfer, dll)
+- [x] Frontend: Tambah menu "Hutang Piutang" di sidebar admin
+
+## Link Permanen & Sistem Akses
+- [x] Database: Tambah role "staff" di enum users
+- [x] Database: Tabel `permanent_links` (slug unik, role, password hash, aktif/nonaktif)
+- [x] Database: Tabel `bank_accounts` (nama bank, nomor rekening, nama pemilik, aktif)
+- [x] Backend: Procedure validasi password link permanen (permanentLinks.validate)
+- [x] Backend: Procedure CRUD permanent_links (admin)
+- [x] Backend: Procedure CRUD bank_accounts (admin)
+- [x] Backend: Procedure list bank_accounts (publik untuk checkout)
+- [x] Frontend: Halaman login link permanen /akses/:slug dengan form password
+- [x] Frontend: Admin - halaman kelola link permanen & rekening bank (/admin/permanent-links)
+- [x] Frontend: Checkout - transfer rekening pribadi sebagai metode utama
+- [x] Frontend: Checkout - tampilkan nomor rekening BRI Rian Supri setelah order dibuat
+- [x] Frontend: OrderDetail - tampilkan rekening tujuan transfer untuk pesanan transfer_bank
+- [x] Frontend: Pegawai - route /staff dengan akses terbatas via StaffRoute guard
+- [x] Seed rekening BRI 516301007823505 a.n. Rian Supri ke database
+
+## Bug Fix - Link Pembeli Redirect ke OAuth
+- [x] Fix: /akses/pembeli-ace redirect ke Facebook/OAuth login - diperbaiki dengan cek ace_store_perm_role di StoreRoute sebelum cek access token biasa
+
+## Pembayaran Hutang Mandiri Pelanggan
+- [x] Database: Tabel `payment_requests` untuk pengajuan bayar hutang dari pelanggan
+- [x] Backend: Procedure pelanggan lihat daftar hutang (paymentRequests.myReceivables)
+- [x] Backend: Procedure pelanggan kirim pengajuan bayar hutang (paymentRequests.submit)
+- [x] Backend: Procedure admin konfirmasi/tolak pengajuan (paymentRequests.adminConfirm/adminReject)
+- [x] Backend: Auto-catat pembayaran ke receivables saat admin konfirmasi
+- [x] Frontend: Halaman pelanggan /my-debt - lihat total hutang, daftar tagihan, kirim bukti bayar
+- [x] Frontend: Form kirim pengajuan (nominal, metode, referensi, catatan)
+- [x] Frontend: Tampilkan rekening BRI tujuan transfer di form pengajuan
+- [x] Frontend: Admin - tab "Pengajuan Bayar" di halaman Hutang Piutang dengan badge notifikasi
+- [x] Frontend: Admin - tombol Konfirmasi/Tolak per pengajuan
+- [x] Frontend: Tambah menu "Hutang Saya" di navbar toko pelanggan
+
+## Fitur Link Rahasia Produk (Unlock After Payment)
+- [x] Database: Tambah kolom `secret_link` dan `secret_link_label` di tabel products
+- [x] Database: Tambah kolom `secret_link` dan `secret_link_label` di tabel order_items (disalin saat checkout)
+- [x] Backend: products.list dan products.bySlug TIDAK expose secret_link ke pelanggan
+- [x] Backend: orders.detail expose secret_link dari order_items hanya jika paymentStatus = paid
+- [x] Frontend Admin: Form produk - tambah field "Link Rahasia" dan "Label Tombol Link"
+- [x] Frontend Pelanggan: Halaman detail pesanan - tombol hijau "Buka Lokasi" setelah lunas
+- [x] Frontend Pelanggan: Sebelum lunas - placeholder kunci abu-abu "Link tersedia setelah pembayaran lunas"
+
+## Integrasi Wablas WhatsApp Notifikasi
+- [x] Simpan WABLAS_TOKEN dan WABLAS_SECRET_KEY sebagai env variable
+- [x] Buat helper server/wablas.ts untuk kirim pesan WhatsApp via Wablas API
+- [x] Notifikasi WA ke admin saat pesanan baru dibuat
+- [x] Notifikasi WA ke admin saat pengajuan bayar hutang masuk
+- [x] Notifikasi WA ke admin saat pembayaran dikonfirmasi lunas
+- [x] Tambah nomor WA admin di pengaturan (env ADMIN_WA_NUMBER)
+
+## Ukuran/Berat Produk (Presisi 0,01 gram)
+- [x] Database: Tambah kolom `weight` (DECIMAL 10,2) dan `weight_unit` (enum: gram, kg, ml, liter, pcs) di tabel products
+- [x] Migrasi SQL: jalankan ALTER TABLE products ADD COLUMN weight, weight_unit
+- [x] Backend: Update db.ts - sertakan weight dan weight_unit di query produk
+- [x] Backend: Update products router - validasi input weight (min 0.01, presisi 2 desimal)
+- [x] Frontend Admin: Tambah field "Berat/Ukuran" dan "Satuan" di form tambah/edit produk
+- [x] Frontend Katalog: Tampilkan berat produk di kartu produk katalog
+- [x] Frontend Detail Produk: Tampilkan berat produk di halaman detail
+
+## Perbaikan Wablas & Cleanup Log
+- [ ] Cek dan perbaiki helper wablas.ts: validasi env, format nomor, error handling
+- [ ] Tambah tRPC procedure testWablas untuk test kirim pesan dari panel admin
+- [ ] Tambah tombol "Test Kirim Pesan WA" di halaman CRM admin
+- [ ] Bersihkan semua console.log tidak berguna di server (routers, db, wablas)
+- [ ] Bersihkan semua console.log tidak berguna di client
+
+## Fitur Baru - Batch Update
+- [x] Generate gambar 3D transparan gelap bertuliskan MCM GROUB
+- [x] Update tampilan login/landing dengan background MCM GROUB
+- [x] Perbaiki format nomor WA: strip tanda + sebelum kirim ke Wablas
+- [x] Perbaiki endpoint Wablas ke subdomain yang benar
+- [x] Tambah tombol Test Kirim WA di panel admin CRM
+- [x] Fitur Reset Data Pabrik: hapus semua orders, carts, receivables, users (kecuali admin)
+- [x] Konfirmasi berlapis untuk Reset Data Pabrik (ketik "RESET" untuk konfirmasi)
+- [x] Bersihkan console.log tidak berguna di server dan client
+
+## Bug Fix - NotFoundError removeChild (Crash di Browser Mobile)
+- [x] Investigasi penyebab crash NotFoundError removeChild
+- [x] Perbaiki conditional rendering tidak stabil di komponen utama (StoreRoute, AdminLayout)
+- [x] Perbaiki DOM conflict: hapus double-redirect di AdminLayout, stabilkan StoreRoute dengan useState initializer
+- [x] Perbaiki route /admin/permanent-links agar konsisten dengan AdminLayout
+- [x] Tambah kolom weight_unit ke database production
+
+## Wablas & Notifikasi Pelanggan
+- [x] Set WABLAS_SERVER env ke subdomain yang benar (solo)
+- [x] Update ADMIN_WA_NUMBER ke +61480899020
+- [x] Tambah notifikasi WA ke pelanggan saat status pesanan berubah (processing, shipped, completed, cancelled, paid)
+- [x] Nomor HP pelanggan sudah tersedia di kolom customerPhone di tabel orders
+
+## SEO Halaman Utama
+- [x] Tambah title yang deskriptif: "ACE STORE - Toko Obat & Bahan Kimia Terpercaya" (47 karakter)
+- [x] Tambah meta description (157 karakter)
+- [x] Tambah H2 heading di halaman utama (sr-only untuk SEO)
+- [x] Tambah keywords di meta tag
+- [x] Tambah Open Graph meta tags (og:title, og:description, og:type, og:locale)
+- [x] Update lang attribute ke id (bahasa Indonesia)
+
+## SEO & Wablas Token Update
+- [x] Buat client/public/sitemap.xml dengan daftar URL halaman utama
+- [x] Buat client/public/robots.txt dengan aturan crawler (blokir /admin/, /api/, /akses/)
+- [x] Tambah link rel="sitemap" di index.html
+- [ ] Update WABLAS_TOKEN ke token baru (menunggu user generate token baru dari dashboard Wablas)
+
+## Google Search Console, OG Image & Custom Notification
+- [x] Generate banner OG image ACE STORE (1200x630px)
+- [x] Upload OG image ke CDN dan tambah og:image di index.html
+- [x] Schema DB: tabel announcements untuk banner/notifikasi toko
+- [x] Backend tRPC: CRUD announcements (admin) dan getActive (publik)
+- [x] UI Admin: halaman kelola pengumuman (buat/edit/hapus/aktifkan)
+- [x] UI Pelanggan: tampilkan banner aktif di halaman katalog
+- [ ] Daftarkan sitemap ke Google Search Console (perlu login manual)
+
+## Perbaikan Background Gelap
+- [x] Perbaiki background AccessGate: overlay berlapis gradient gelap + vignette effect di tepi
+
+## Hapus MCM GROUB
+- [x] Hapus referensi MCM GROUB dari AccessGate (footer, copyright)
+- [x] Hapus keyword MCM GROUB dari meta tags di index.html
+- [x] Hapus keyword MCM GROUB dari App.tsx SEO component dan hidden list
+- [x] Cek semua file lain yang menyebut MCM GROUB (tidak ada lagi)
+
+## Bug Fix - Background Putih
+- [x] Perbaiki background AccessGate yang berubah menjadi putih: ubah ThemeProvider ke dark, ubah :root CSS variables ke dark mode, tambah colorScheme: dark pada container
+
+## Sistem Custom Notification
+- [x] Schema DB: tabel notifications (id, userId, type, title, message, isRead, createdAt)
+- [x] Backend tRPC: getNotifications, markAsRead, markAllRead, getUnreadCount, clearRead
+- [x] Trigger otomatis: pesanan baru, pembayaran masuk, status pesanan berubah, hutang baru
+- [x] Komponen NotificationBell di AdminLayout (badge + dropdown list)
+- [x] Komponen NotificationBell di StoreNavbar untuk pelanggan
+- [ ] Push browser notification (Web Push API) untuk admin dan pelanggan
+- [ ] Halaman pengaturan notifikasi (aktif/nonaktif per jenis)
+- [x] Integrasikan trigger di store.ts, receivables.ts, payment.ts
+- [x] Halaman admin /admin/notifications untuk melihat semua notifikasi
+- [x] Menu Notifikasi di sidebar admin
+
+## Webhook WhatsApp Publik (Wablas Integration)
+- [x] Buat endpoint GET/POST /api/webhook/whatsapp yang bisa diakses tanpa login
+- [x] Handle pesan masuk dari pelanggan WhatsApp (auto-reply atau forward ke admin)
+- [x] Daftarkan route di Express sebelum auth middleware
+- [x] Test endpoint bisa diakses publik tanpa session
+
+## Fitur Inbox Chat WhatsApp di CRM
+- [ ] Riset Wablas API endpoint untuk ambil pesan masuk (inbox)
+- [ ] Schema DB: tabel wa_messages (id, phone, name, message, direction, timestamp, isRead)
+- [ ] Backend: syncWaInbox, getConversations, getMessages, sendReply
+- [ ] Webhook handler: simpan pesan masuk otomatis ke DB
+- [ ] UI: daftar kontak/percakapan di kiri (mirip WA sidebar)
+- [ ] UI: panel chat di kanan dengan bubble pesan masuk/keluar
+- [ ] UI: input balas pesan + tombol kirim
+- [ ] Auto-refresh setiap 10 detik untuk pesan baru
+
+## Bug Fix - Notifikasi Tidak Tampil
+- [x] Fix field mapping: DB pakai notif_type tapi kode pakai type → perbaiki query/schema
+
+## Fitur Inbox Chat WhatsApp di CRM (Prioritas)
+- [x] Schema DB: tabel wa_chats (phone, name, lastMessage, lastTime, unreadCount)
+- [x] Schema DB: tabel wa_messages (id, chatPhone, message, direction, timestamp, isRead)
+- [x] Backend: saveIncomingMessage (dipanggil dari webhook)
+- [x] Backend: getChats (daftar percakapan)
+- [x] Backend: getMessages (riwayat chat per nomor)
+- [x] Backend: sendReply (kirim balas via Wablas)
+- [x] Backend: markChatRead (tandai sudah dibaca)
+- [x] Webhook handler: simpan pesan masuk ke wa_messages otomatis
+- [x] UI CRM: halaman /admin/wa-inbox dengan daftar percakapan di kiri
+- [x] UI CRM: panel chat di kanan dengan bubble pesan masuk/keluar
+- [x] UI CRM: input balas + tombol kirim
+- [x] UI CRM: badge unread di menu Inbox WA
+- [x] Auto-refresh setiap 10 detik
+- [x] Menu Inbox WA di sidebar admin
+
+## 3 Fitur Baru (dari saran)
+- [x] Panduan aktivasi webhook Wablas di halaman CRM (info toggle + tombol test endpoint)
+- [x] Verifikasi notifikasi WA terkirim saat pesanan baru dibuat
+- [x] Fitur pencarian kontak/percakapan di panel kiri Inbox WA
+
+## Fitur Laba Rugi
+- [ ] Tambah kolom purchasePrice (harga beli) di tabel products
+- [ ] Update form tambah/edit produk dengan kolom Harga Beli
+- [ ] Backend: procedure getLaporanLabaRugi (per periode, per produk)
+- [ ] Halaman /admin/profit-loss: laporan laba rugi dengan grafik dan tabel
+
+## Fitur Export Excel
+- [ ] Install library xlsx (SheetJS) untuk generate file Excel di browser
+- [ ] Tombol "Export Excel" di halaman Pesanan admin
+- [ ] Tombol "Export Excel" di halaman Hutang Piutang admin
+
+## Nomor WA Pelanggan & Notifikasi Status Pesanan
+- [ ] Tambah kolom whatsappNumber di tabel access_tokens (profil pelanggan)
+- [ ] Form isi nomor WA di halaman profil/akun pelanggan
+- [ ] Kirim notifikasi WA ke pelanggan saat status pesanan berubah (diproses, dikirim, selesai)
+
+## Fitur Baru - Laporan Laba/Rugi, Export Excel, Nomor WA Pelanggan
+- [x] Database: Tambah kolom `purchase_price` di tabel products
+- [x] Database: Tambah kolom `whatsapp_number` di tabel users
+- [x] Backend: profitLossRouter - laporan laba/rugi berdasarkan harga beli vs harga jual
+- [x] Backend: getUserById di db.ts untuk lookup WA number dari profil user
+- [x] Backend: auth.updateProfile procedure untuk simpan nomor WA pelanggan
+- [x] Backend: Fallback WA number dari user profile saat notifikasi status pesanan
+- [x] Frontend Admin: Halaman /admin/profit-loss - Laporan Laba/Rugi dengan filter tanggal
+- [x] Frontend Admin: Menu "Laba/Rugi" di sidebar admin
+- [x] Frontend Admin: Field "Harga Beli" di form produk (tambah/edit)
+- [x] Frontend Admin: Tombol Export Excel di halaman Orders
+- [x] Frontend Admin: Tombol Export Excel di halaman Piutang
+- [x] Frontend Pelanggan: Section Nomor WhatsApp di halaman Pesanan Saya
+- [x] Unit tests: 15 tests untuk fitur baru (semua passing)
+
+## Bug Fix & Fitur Baru - Dashboard + 3 Saran
+- [x] Bug: Kartu Dashboard tidak bisa diklik - tambah navigasi ke halaman terkait
+- [x] Fitur: Export Excel di halaman Laba/Rugi
+- [x] Fitur: Filter Laporan Laba/Rugi per Kategori Produk
+- [x] Fitur: Notifikasi WA ke pelanggan saat pesanan baru dibuat
+
+## Bug Fix - Error Pembayaran
+- [x] Bug: React error #310 saat proses pembayaran (hooks/useEffect tidak stabil di Checkout)
+
+## Fitur Notifikasi In-App Pelanggan
+- [x] Backend: procedure getCustomerNotifications dan markAsRead
+- [x] Backend: kirim notifikasi in-app ke pelanggan saat status pesanan berubah
+- [x] Frontend: badge notifikasi di StoreNavbar
+- [x] Frontend: halaman daftar notifikasi pelanggan (/store/notifications)
+
+## Fitur Batch 3 - Upload Bukti Transfer, Filter Pesanan, Broadcast Notif
+- [x] Backend: kolom payment_proof_url di tabel orders
+- [x] Backend: procedure uploadPaymentProof dan getPaymentProof
+- [x] Backend: procedure broadcastNotification (admin only)
+- [x] Frontend: Upload Bukti Transfer di Order Detail (pelanggan)
+- [x] Frontend: Filter tab status di halaman Pesanan Saya (MyOrders)
+- [x] Frontend: Halaman/form Broadcast Notifikasi di Admin Panel (/admin/broadcast)
+- [x] Frontend: Menu Broadcast di sidebar admin
+
+## Perbaikan Bot WA - Auto Reply
+- [x] Perbaiki respons webhook WhatsApp: ganti JSON {"received":true} dengan pesan teks ramah pengguna
+
+## Fitur Batch 4 - CRM Auto-Reply, Notif Bukti Transfer, Lihat Bukti di Admin
+- [x] Backend: kolom wa_auto_reply_message dan wa_auto_reply_enabled di tabel crm_settings
+- [x] Backend: updateSettings procedure sudah handle waAutoReplyMessage dan waAutoReplyEnabled
+- [x] Backend: notifikasi admin (in-app + WA) saat pelanggan upload bukti transfer
+- [x] Frontend: Tab Auto-Reply di halaman CRM admin dengan form kustomisasi pesan + preview
+- [x] Frontend: Tampilkan bukti transfer di dialog detail pesanan AdminOrders
+- [x] Frontend: Indikator "belum ada bukti" untuk pesanan transfer bank yang pending
+
+## Fitur Batch 5 - Konfirmasi Pembayaran, Export PDF, Riwayat Broadcast
+- [x] Frontend: Tombol "Konfirmasi Pembayaran" di dialog detail pesanan AdminOrders (saat bukti transfer ada)
+- [x] Frontend: Export PDF di halaman Laporan Laba/Rugi
+- [x] Backend: Simpan riwayat broadcast ke database (tabel broadcast_logs)
+- [x] Frontend: Tampilkan riwayat broadcast dari DB di halaman /admin/broadcast
+
+## Bot WA Menu Interaktif & Katalog Produk Kristal
+- [x] Upload foto kristal ke CDN (webdev static assets)
+- [x] Seed kategori "Kristal" dan 4 produk kristal ke database
+- [x] Produk 1: KRISTAL 1G (0.90g) - harga via admin - link Google Maps
+- [x] Produk 2: KRISTAL ST (0.40g) - harga via admin - link Google Maps
+- [x] Produk 3: KRISTAL SPR (0.20g) - harga via admin - link Google Maps
+- [x] Produk 4: KRISTAL CUSTOM - langsung hubungi admin WA
+- [x] Update katalog: tombol "Hubungi Admin" WA di setiap produk (ganti tombol beli)
+- [x] Update detail produk: tombol "Hubungi Admin" WA
+- [x] Bot WA: menu interaktif BELI DI KATALOG → kirim link katalog
+- [x] Bot WA: menu PEMBAYARAN HUTANG → kirim link halaman bayar hutang
+- [x] Bot WA: deteksi kata kunci "resi"/"bukti" → auto-reply sisa hutang pelanggan
+
+## Bug Fix - Bot WA Internal Error
+- [x] Perbaiki error internal di webhookWhatsapp.ts: kolom waAutoReplyMessage/waAutoReplyEnabled belum ada di DB production - sudah dimigrasi dan fix nama kolom di query SQL
+
+## Bug Fix - Bot WA Tidak Membalas
+- [ ] Investigasi dan perbaiki bot WA tidak mengirim balasan teks ke pelanggan
+
+## Bug Fix - Bot WA Respons JSON Terkirim ke Chat
+- [x] Fix: respons {"received":true} terkirim ke chat pelanggan - ganti ke plain text "OK"
+- [x] Fix: nama pelanggan tampil sebagai nomor HP - sekarang tampil "Pelanggan" jika nama tidak tersedia
+
+## Fitur AI Bot WA - Customer Service Cerdas
+- [ ] Buat fungsi generateAIReply: ambil konteks produk + hutang pelanggan, panggil LLM
+- [ ] Simpan riwayat percakapan per nomor WA untuk konteks multi-turn
+- [ ] Integrasikan AI reply ke webhook sebagai fallback cerdas (setelah menu 1/2)
+- [ ] AI mengetahui: info toko, produk, cara pesan, info hutang pelanggan
+
+## Pemisahan Nomor Admin & Pelayanan WA
+- [x] Tambah env SERVICE_WA_NUMBER=61480899020 untuk link wa.me di bot dan katalog
+- [x] ADMIN_WA_NUMBER=628131602402 tetap untuk notifikasi pesanan/pembayaran
+- [x] Update aiReply.ts agar adminPhone pakai SERVICE_WA_NUMBER
+- [x] Update webhookWhatsapp.ts agar link wa.me pakai SERVICE_WA_NUMBER
+- [x] Update StoreCatalog.tsx agar tombol Hubungi Admin pakai SERVICE_WA_NUMBER (via storeInfo procedure)
+
+## Fitur Inbox WA - 3 Peningkatan
+- [x] Backend: procedure updateContactName untuk edit nama kontak manual
+- [x] Backend: sinkronisasi nama dari tabel receivables/CRM ke wa_chats saat query
+- [x] Backend: filter getChats dengan param filter=unread_only (belum dibalas)
+- [x] Frontend: tombol edit nama kontak di header chat (inline edit)
+- [x] Frontend: tampilkan nama dari CRM jika tersedia (prioritas di atas pushname)
+- [x] Frontend: tab filter "Semua" / "Belum Dibalas" di daftar Inbox WA
+
+## Fitur Inbox WA - Lanjutan
+- [x] DB: tambah kolom status (open/closed) di wa_chats
+- [x] DB: buat tabel wa_quick_replies untuk template balasan cepat
+- [x] Backend: procedure deleteContact (hapus wa_chats + wa_messages)
+- [x] Backend: procedure updateChatStatus (open/closed)
+- [x] Backend: CRUD procedure untuk wa_quick_replies
+- [x] Frontend: tombol hapus kontak di header chat (dengan konfirmasi)
+- [x] Frontend: tombol Selesai/Buka Kembali di header chat
+- [x] Frontend: panel quick reply - tombol ⚡ di input area, pilih template, klik langsung isi input
+- [x] Frontend: halaman manajemen template quick reply di admin (/admin/quick-replies)
+
+## Fitur Inbox WA - Otomasi & Notifikasi
+- [x] Seed 5 template Quick Reply default ke database
+- [x] Notifikasi WA ke admin (ADMIN_WA_NUMBER) saat pesan masuk pertama dari pelanggan baru
+- [x] Notifikasi WA ke admin saat ada pesan masuk di chat yang sudah closed
+- [x] Auto-close chat: endpoint /api/cron/auto-close-chats menutup chat open tidak aktif > 24 jam
+- [x] Chat yang sudah closed otomatis dibuka kembali saat ada pesan masuk baru
+
+## Fitur Panel Harga Cepat Inbox WA
+- [x] Seed template Quick Reply harga Kristal (600rb, 700rb, 800rb, 900rb, 1jt) ke database
+- [x] Seed template Quick Reply harga GS (450rb, 550rb, 650rb, 750rb, 900rb) ke database
+- [x] Update AdminWaInbox: tambah panel "Harga Cepat" dengan tombol Kristal (biru) dan GS (hijau), klik langsung isi input pesan
+
+## Perubahan Sistem Harga Cepat
+- [x] Fix aiReply.ts: bot tidak menyebut harga ke pelanggan, hanya arahkan ke admin WA
+- [x] Fix getProductContext: sembunyikan harga dari konteks AI
+- [x] Update AdminWaInbox: tombol harga buka kalkulator (qty botol + harga satuan = total)
+- [x] Kalkulator generate pesan siap kirim: "Harga X botol @Rp Y = Rp Z"
+
+## Fitur Lanjutan Kalkulator & Pesanan dari Chat
+- [ ] DB: tambah tabel wa_price_history (phone, produk, harga, qty, satuan, total, createdAt)
+- [ ] Backend: procedure savePriceHistory (simpan saat admin kirim harga ke pelanggan)
+- [ ] Backend: procedure getPriceHistory (ambil riwayat harga per nomor WA)
+- [ ] Backend: procedure createOrderFromChat (buat draft pesanan dari data chat)
+- [ ] Frontend: dropdown satuan di kalkulator (botol / gram / kg)
+- [ ] Frontend: tampilkan riwayat harga pelanggan di sidebar chat (tab Riwayat Harga)
+- [ ] Frontend: tombol "Buat Pesanan" di area kalkulator setelah harga dikirim
+
+## Fitur Notifikasi, Harga Gram & Export Excel
+- [ ] Backend: kirim WA ke pelanggan saat pesanan dibuat dari chat (nomor order + instruksi bayar)
+- [ ] Backend: endpoint export Excel riwayat transaksi WA (wa_price_history)
+- [ ] Frontend: setelah Buat Pesanan berhasil, otomatis kirim WA konfirmasi ke pelanggan
+- [ ] Frontend: tambah tombol harga per gram Kristal di panel Harga Cepat (misal 1rb/gram, 1.5rb/gram, 2rb/gram)
+- [ ] Frontend: tombol Export Excel di halaman Pesanan untuk unduh transaksi WA
+
+## Bug Laporan Laba/Rugi
+- [x] Fix tombol Export Excel, Export PDF, dan Tampilkan Laporan tidak bereaksi di halaman Laba/Rugi
+
+## Fix Laba/Rugi & Harga Gram Kristal
+- [x] Fix jsPDF import di AdminProfitLoss agar tombol Export PDF dan Export Excel berfungsi
+- [x] Update tombol harga per gram Kristal: 650/g, 750/g, 850/g, 1rb/g
+
+## Fitur Password Toko untuk Pelanggan Baru
+- [ ] Investigasi sistem akses toko yang sudah ada
+- [ ] Backend: procedure validasi password toko (store_password di settings)
+- [ ] Backend: procedure admin untuk set/ubah password toko
+- [ ] Frontend: halaman login toko tampilkan field password untuk pelanggan baru
+- [ ] Frontend: panel pengaturan password toko di admin settings
+
+## Fitur Pengingat Hutang di AI Bot
+- [x] Update aiReply.ts: jika pelanggan punya hutang outstanding dan kirim kata order/beli/pesan, AI mengingatkan sisa hutang sebelum proses order
+
+## Fitur Lanjutan Password Toko
+- [x] Tambah nomor WA ke data hutang lama (CIPRUT, KOSER, RIAN) agar bot AI bisa kirim pengingat hutang
+- [x] Buat tabel log pengiriman password (password_send_logs) dan backend API
+- [x] Buat halaman log pengiriman password di panel admin (/admin/store-password)
+- [x] Tambah tombol "Kirim Ulang Password" di detail order/pelanggan di panel admin
+
+## Fitur AI Reply WhatsApp
+- [x] Backend: tRPC procedure waChat.aiReply — LLM dengan konteks toko (produk, harga, order, hutang)
+- [x] Backend: waChat.toggleAiAutoReply — toggle on/off AI auto-reply per chat
+- [x] Webhook: auto-reply AI saat pesan masuk jika AI mode aktif
+- [x] UI: tombol "Balas dengan AI" per pesan di inbox WA admin
+- [x] UI: toggle AI auto-reply per percakapan di inbox WA admin
+
+## Perbaikan Bot WA - Pengingat Hutang Sebelum Order
+- [ ] Fix: bot WA harus cek hutang pelanggan SEBELUM proses keyword order/beli
+- [ ] Fix: jika ada hutang outstanding, bot BLOKIR order dan kirim pesan tagihan hutang + link bayar
+- [ ] Fix: logika di webhookWhatsapp.ts (keyword beli/order) dan aiReply.ts (konteks hutang)
+- [ ] Fix: pesan pengingat hutang harus menyebut nominal hutang dan link halaman bayar
+
+## Fitur Follow-up Otomatis Setelah Admin Balas WA
+- [ ] Database: tambah kolom follow_up_scheduled_at dan follow_up_sent di tabel wa_chats
+- [ ] Backend: procedure waChat.sendFollowUp — kirim pesan follow-up manual ke pelanggan
+- [ ] Backend: job scheduler — cek setiap 2 menit, kirim follow-up otomatis 10 menit setelah admin balas jika pelanggan belum konfirmasi
+- [ ] Backend: tandai follow_up_sent=true setelah follow-up terkirim agar tidak kirim ulang
+- [ ] Frontend: tombol "Kirim Follow-up Order" di header chat inbox WA admin
+
+## Perbaikan Nama Pelanggan di Pesan Bot
+- [ ] Fix: nama "Pelanggan C" di pesan bukti pembayaran — ambil nama dari wa_chats.name atau orders.customerName, bukan fallback generik
+
+## Bug Notifikasi
+- [ ] Fix: klik notifikasi di dropdown tidak bisa navigasi ke halaman terkait (Inbox WA, Pesanan, dll)
+
+## Bug Bot WA - Bukti Transfer Pelanggan Berhutang
+- [ ] Fix: bot tidak membalas dengan benar saat pelanggan berhutang (KOSER) kirim bukti transfer hutang
+
+## Fitur Inbox WA - Bukti Transfer & Konfirmasi Hutang
+- [ ] Tampilkan foto/gambar media di percakapan inbox WA admin
+- [ ] Tombol "Konfirmasi Pembayaran Hutang" di inbox WA yang langsung kurangi saldo hutang pelanggan
+- [ ] Notifikasi WA ke admin saat pelanggan berhutang kirim foto bukti transfer
+
+## Fitur Lanjutan - Batch 3
+- [ ] Filter "Ada Foto" di inbox WA untuk cepat temukan bukti transfer
+- [ ] Riwayat konfirmasi pembayaran hutang di halaman Hutang Piutang (log kapan, siapa, nominal, catatan)
+- [ ] Broadcast pengingat hutang massal ke semua pelanggan berhutang aktif dari menu Broadcast
+
+## Fitur Gudang & Lokasi Produk
+- [ ] Database: Tabel product_locations (id, productId, label, lat, lng, photoUrl, notes, stock, isAvailable)
+- [ ] Backend: CRUD procedures untuk lokasi produk (list, add, update, delete, toggleAvailable)
+- [ ] Backend: Procedure pilih lokasi tersedia otomatis saat order lunas
+- [ ] Halaman admin /admin/gudang: daftar produk + lokasi, upload foto, input koordinat, Google Maps preview interaktif
+- [ ] Integrasi order lunas: otomatis pilih lokasi tersedia dan kirim foto + link Google Maps ke pembeli via WA
+- [ ] Kurangi stok lokasi saat lokasi dikirim ke pembeli
+
+## Bug Halaman Gudang
+- [x] Fix: field input link Google Maps tidak bisa di-paste
+- [x] Fix: upload foto di halaman Gudang tidak berfungsi
+
+## Update Stok Produk Aktual
+- [x] Update stok produk sesuai aktual: KRISTAL ST=2, KRISTAL SPR=2, KRISTAL 1G=0, KRISTAL CUSTOM=0, 1g=0, GS=0
+
+## Tambah Lokasi Gudang KRISTAL 1G
+- [x] Upload foto KRISTAL 1G ke CDN dan insert lokasi gudang ke database (stok=1, link Maps: https://maps.app.goo.gl/K1SxtUUFWoQcxzpj9)
+- [x] Update stok produk KRISTAL 1G menjadi 1
+
+## Bug Fix - Bot WA Mengarahkan ke Katalog saat Pelanggan Minta Pesan
+- [x] Perbaiki logika bot: saat pelanggan minta pesan produk, bot tidak mengarahkan ke katalog/admin tapi langsung konfirmasi pesanan
+
+## Bug Fix - Bot WA Looping saat Pelanggan Jawab Detail Pesanan
+- [x] Perbaiki bot: cek pesan sebelumnya — jika bot baru tanya detail pesanan dan pelanggan jawab dengan nama produk+jumlah, bot konfirmasi ringkasan order bukan tanya ulang
+
+## Fix Looping Bot + Tombol Buat Pesanan dari Inbox WA
+- [x] Fix root cause looping: hapus angka "1" dan "2" dari keyword trigger order/hutang
+- [x] Prioritaskan cek konteks botJustAskedOrder SEBELUM cek keyword
+- [x] Tambah tombol "Buat Pesanan" di panel chat inbox WA yang parse detail pesanan dari pesan terakhir pelanggan
+
+## Bug Fix - Harga Cepat Salah (750 bukan 750000)
+- [x] Perbaiki nilai harga cepat di AdminWaInbox.tsx: semua nilai harus dalam satuan rupiah penuh (750000 bukan 750)
+
+## Saran Lanjutan - Harga Cepat & Kalkulator
+- [x] Verifikasi tombol harga KRISTAL (600rb-1jt) dan GS (450rb-900rb) sudah benar
+- [x] Tambah input harga kustom di kalkulator (admin bisa ketik harga sendiri)
+- [x] Sinkronisasi harga cepat dengan harga produk dari database (ambil dari tabel products)
+
+## Audit Menyeluruh & Maksimalisasi
+- [ ] Audit semua file kritis dan identifikasi bug
+- [ ] Perbaiki bot WA looping (root cause final)
+- [ ] Validasi form dan error handling di semua halaman
+- [ ] Maksimalkan PWA: manifest.json, service worker, ikon semua ukuran
+- [ ] Panduan instalasi PWA / Play Store via PWABuilder
+
+## Redesign Bot WA - Fully Automated
+- [ ] Bot handle semua alur: order, hutang, info produk, follow-up - tidak ada "hubungi admin"
+- [ ] Bot kirim notifikasi ke admin saat ada pesanan/pembayaran baru (bukan pelanggan)
+- [ ] Admin panel: hanya tombol Konfirmasi Pesanan dan Konfirmasi Pembayaran
+- [ ] Setelah admin konfirmasi, bot otomatis kirim notif ke pelanggan
+- [ ] Maksimalkan PWA: service worker + manifest lengkap
+
+## Alur Pesanan WA Fully Automated
+- [x] Tambah tabel wa_pending_orders di DB (phone, nama, produk, jumlah, status: pending/confirmed/rejected/paid)
+- [x] Bot catat pesanan ke wa_pending_orders dan kirim notif ke admin saat pesanan masuk
+- [x] Procedure konfirmYA: admin isi harga → bot kirim ke pelanggan suruh transfer
+- [x] Procedure konfirmTIDAK: bot balas pelanggan stok tidak tersedia
+- [x] Procedure konfirmBayar: admin konfirmasi bayar → bot kirim lokasi produk dari gudang
+- [x] Panel AdminWaInbox: tab Pesanan Pending dengan tombol YA+harga, TIDAK, Konfirmasi Bayar
+
+## Maksimalkan AI Bot WA
+- [x] Audit prompt AI saat ini dan identifikasi kelemahan
+- [x] Upgrade prompt: lebih natural, kontekstual, handle skenario kompleks (tawar, tanya stok, tanya harga, komplain, dll)
+- [x] Bot bisa baca riwayat chat untuk jawab lebih relevan
+- [x] Bot bisa deteksi nama produk dari pesan tidak formal (typo, singkatan)
+
+## Bug Fix - Notif WA Admin Tidak Terkirim
+- [x] Debug: cek ADMIN_WA_NUMBER env, cek log Wablas, cek alur notif di webhookWhatsapp.ts
+- [x] Pastikan notif WA ke admin terkirim saat pesanan masuk (dengan instruksi konfirmasi YA/TIDAK)
+
+## Bug Fix - AI Mode Tidak Notif Admin
+- [x] Tambah deteksi intent pesanan di AI mode: setelah AI reply konfirmasi pesanan, catat ke wa_pending_orders dan notif admin
+
+## Debug Notif Admin Tidak Fungsi
+- [ ] Debug log server: trace alur webhook saat pesan masuk, cek apakah notif admin terkirim
+- [ ] Perbaiki root cause notif admin tidak terkirim
+
+## Bug Kritis Bot WA - HTML Mentah & Hubungi Admin
+- [ ] Hapus semua referensi "hubungi admin" / wa.me dari prompt AI
+- [ ] Cegah bot fetch konten URL yang dikirim pelanggan (bot jangan kirim HTML mentah ke WA)
+
+## Peningkatan Bot WhatsApp (Saran)
+- [ ] Pastikan panel admin rekening bank bisa tambah/edit/hapus rekening (multi-rekening)
+- [ ] Perkuat deteksi kata kunci rekening di bot (mau bayar, nomor rek, transfer ke mana, dll)
+- [ ] Tambah follow-up otomatis 30 menit setelah rekening dikirim ke pelanggan
+
+## Sistem Gudang Utama KRISTAL ECERAN
+- [x] Update database: KRISTAL ECERAN jadi gudang utama (stok 238 gram), nonaktifkan KRISTAL ONS dan KRISTAL CUSTOM
+- [x] Tambah kolom requestedGrams, isCustomOrder, withdrawnGrams ke tabel wa_pending_orders
+- [x] Update schema Drizzle (requestedGrams, isCustomOrder, withdrawnGrams)
+- [x] Bot WA: deteksi permintaan eceran/custom (gram/ons), set isCustomOrder=true, simpan requestedGrams
+- [x] Bot WA: notif admin berbeda untuk pesanan eceran (tampilkan berat diminta)
+- [x] Panel admin: badge "ECERAN GUDANG" untuk pesanan custom
+- [x] Panel admin: tampilkan info berat diminta (requestedGrams) di kartu pesanan
+- [x] Panel admin: input gram yang diambil dari gudang saat konfirmasi YA
+- [x] Server: konfirmWaOrderYes kurangi stok KRISTAL ECERAN otomatis saat admin isi withdrawnGrams
+- [x] Server: simpan withdrawnGrams ke pesanan setelah konfirmasi
+
+## Integrasi Viber Bot
+- [x] Buat file server/viber.ts: helper kirim pesan Viber + set webhook
+- [x] Buat file server/webhookViber.ts: handler pesan masuk Viber (mirip webhookWhatsapp.ts)
+- [x] Update schema: tambah kolom source (whatsapp/viber) ke waChats dan waMessages
+- [x] Daftarkan route /api/viber/webhook di server/_core/index.ts
+- [x] Tambah prosedur admin: setViberWebhook, testViber, viberStatus
+- [x] Update panel admin AdminWaInbox: badge Viber ungu di kontak Viber
+- [x] Update AdminCRM: ViberBotSetupCard dengan panduan setup + tombol set webhook + test kirim pesan
+- [ ] Simpan Viber Auth Token via secrets (perlu dilakukan admin)
+
+## Bug Kritis - Bot WA Macet Tidak Membalas
+- [x] Cek log server: trace alur webhook saat pesan masuk dari pelanggan
+- [x] Identifikasi root cause: kolom msg_source ada di schema Drizzle tapi belum di database → setiap insert wa_messages error → bot tidak bisa balas
+- [x] Perbaiki: ALTER TABLE wa_messages ADD COLUMN msg_source VARCHAR(20) DEFAULT 'whatsapp'
+- [x] Verifikasi: bot kembali aktif dan membalas pesan test dengan daftar produk
+
+## Penyempurnaan Menyeluruh (Batch Fix)
+- [x] Monitoring error otomatis: notif WA admin jika ada error database/webhook kritis
+- [x] Perkuat deteksi rekening di bot (mau bayar, nomor rek, transfer ke mana, dll)
+- [x] Follow-up otomatis 30 menit setelah rekening dikirim (sudah ada scheduler, berfungsi baik)
+- [x] Perbaiki bug HTML mentah di bot: tambah sanitasi HTML tags dan decode HTML entities
+- [x] Hapus semua referensi "hubungi admin" dari bot: regex lebih ketat di sanitasi reply
+- [x] Audit console.log: semua log server adalah log operasional yang berguna, tidak ada yang perlu dihapus
+- [x] Audit semua file: 0 TypeScript error, 0 browser console error, semua file bersih
+- [x] Setup PWA lengkap: service worker (sw.js) dibuat, manifest.json diupdate dengan screenshots & shortcuts
+- [x] Meta tags SEO dan Open Graph sudah lengkap di index.html (sudah ada sebelumnya)
+
+## Fitur Input Gram di Keranjang (Kristal Premium)
+- [x] Audit halaman keranjang dan struktur cart item
+- [x] Tambah field gramAmount di tabel cart_items dan order_items (database + schema)
+- [x] Tampilkan input gram di CartDrawer: input angka + tombol cepat 0.2g/0.4g/0.6g/1g, min 0.20g
+- [x] Teruskan gramAmount dari cart ke order saat checkout
+- [x] Tampilkan badge gram di detail pesanan AdminOrders
+
+## Bug - Bot Tidak Kirim Rekening Setelah Konfirmasi Pesanan
+- [ ] Audit logika deteksi konfirmasi dan pengiriman rekening di aiReply.ts
+- [ ] Perbaiki: bot harus kirim rekening otomatis saat pelanggan bilang "ok/siap/kedap/njeh"
+
+## Opsi B - Kirim Rekening Otomatis Setelah Pesanan Dicatat
+- [x] Update webhookWhatsapp.ts: kirim rekening langsung setelah recordOrderAndNotifyAdmin
+- [x] Update system prompt aiReply.ts: sesuaikan alur bot (tidak perlu tunggu admin)
+
+## Bug Kritis - Bot Ngaco Balas Bukti Transfer
+- [x] Analisis: bot balas sisa hutang Rp1.725.000 saat terima gambar = BENAR (hutang memang segitu, belum dikonfirmasi)
+- [x] Bug ditemukan: kalkulasi sisa hutang di confirmDebtPayment pakai 'remaining' loop bukan total DB → salah tampilkan LUNAS
+- [x] Perbaiki: hitung ulang totalSisaHutang dari DB setelah update, bukan dari variabel remaining loop
+- [x] Verifikasi data Rian: status=partial, paidAmount=1.150.000, sisa=575.000 (benar)
+
+## Role-Based Access Control (RBAC)
+- [x] Admin: akses semua menu (sudah berjalan)
+- [x] Pegawai (staff): sidebar hanya tampil Produk + Kategori, route lain redirect ke /store
+- [x] Pelanggan (buyer): hanya katalog dan checkout, redirect ke /store jika coba akses admin
+- [x] Update sidebar AdminLayout: filter menu berdasarkan role efektif
+- [x] Update App.tsx: /admin/products dan /admin/categories pakai StaffRoute (bukan AdminRoute)
+- [x] Update server/routers/products.ts: tambah staffProcedure, CRUD produk/kategori bisa diakses staff
+- [x] Staff masuk via /akses/pegawai-ace → password ace2024 → redirect ke /staff (AdminProducts)
+
+## RBAC - Tambah Gudang untuk Pegawai
+- [x] Update AdminLayout sidebar: tampilkan menu Gudang untuk role staff
+- [x] Update server router gudang: semua procedure diubah ke staffProcedure agar pegawai bisa akses
+
+## Bug - Pegawai Tidak Bisa Simpan Produk
+- [ ] Diagnosa: cek role yang disimpan di session pegawai vs role yang dicek di staffProcedure
+- [ ] Perbaiki staffProcedure di products.ts dan gudang.ts agar sesuai dengan nilai role di database
+- [x] Notif WA ke admin dan pegawai (085600708739) setiap produk terjual: nama produk, jumlah/gram terjual, sisa stok
+- [x] Rekap harian otomatis jam 23:00 WIB ke admin (lengkap+harga) dan pegawai (stok saja tanpa harga)
+- [x] Perbaiki notif produk terjual ke pegawai: hapus info harga dari pesan
+- [x] Tombol "Kirim Rekap Sekarang" di panel admin (trigger manual)
+- [x] Rekap mingguan otomatis tiap Senin jam 07:00 WIB
+- [ ] Filter rekap pegawai: kolom staffVisible per produk (bisa on/off di admin)
+- [x] Panel pegawai: halaman orderan request pending
+- [x] Panel pegawai: input gram + upload foto bukti kiriman + kirim secretLink ke pembeli via WA
+- [x] Panel pegawai: kelola secretLink per produk
+- [x] Pastikan nomor pegawai tidak pernah terekspos ke pembeli
+- [x] Fitur Request Order di panel pegawai: form multi-produk, input gram 0.01g, foto bukti, kirim 1 WA ke pembeli
+- [x] Admin bisa akses dan sinkron Request Order dari panel admin
+- [x] Edit link map dari kartu foto di Galeri
+- [x] Sortir foto terbaru di atas dengan toggle di Galeri
+- [ ] Kirim foto+link map sekaligus dari Inbox WA
+- [ ] Bot WA: deteksi foto/bukti transfer masuk → tanya tujuan (hutang/beli) → jika hutang catat otomatis ke receivables
+- [ ] Menu Request Upload di panel pegawai: upload foto + link lokasi → notif admin → admin kirim ke pembeli
+
+## Photo Editor untuk Pegawai
+- [x] Komponen PhotoEditor.tsx dengan Fabric.js (canvas-based editor)
+- [x] Tool teks: tambah teks overlay dengan pilihan warna dan ukuran, double-click untuk edit inline
+- [x] Tool panah: stiker panah profesional dengan 6 arah, pilihan warna dan ukuran
+- [x] Undo last object dan hapus objek terpilih
+- [x] Simpan hasil edit sebagai JPEG base64
+- [x] Integrasi PhotoEditor ke StaffUploadRequest: tombol "Edit Foto" muncul setelah foto dipilih
+- [x] Perbaiki error DailyRecap: remaining_amount → (amount - paidAmount) dengan filter status outstanding/partial
+
+## Panduan Setup Produk Pertama Kali
+- [x] Perbaiki form Tambah Produk: tambah kartu pilih tipe (GS per botol vs Kristal per gram) di bagian atas
+- [x] Field "Stok Awal (Botol)" dengan penjelasan cara kerja pengurangan otomatis untuk GS
+- [x] Field "Stok Awal (Gram)" dengan penjelasan cara kerja pengurangan otomatis untuk Kristal
+- [x] Section Mode Timbangan lebih jelas: border hijau saat aktif, penjelasan cara kerja
+- [x] Section Pengiriman Lokasi lebih jelas: dua kartu perbandingan GS (manual) vs Kristal (otomatis)
+- [x] Halaman AdminPanduan.tsx: panduan 6 langkah setup produk pertama kali
+- [x] Halaman panduan berisi alur lengkap WA GS, WA Kristal, dan Website
+- [x] Halaman panduan berisi FAQ: kapan stok berkurang, apa yang terjadi jika stok 0
+- [x] Route /admin/panduan didaftarkan di App.tsx
+- [x] Menu "Panduan Setup" ditambahkan ke sidebar admin dan staff
+
+## Fitur Baru: Tambah Stok, Notif Kritis, Laporan Stok Harian
+- [x] Schema: tabel stock_in_log untuk riwayat stok masuk
+- [x] Backend: procedure gudang.addStock (tambah/set stok utama + catat log)
+- [x] Backend: procedure gudang.listStockInLog (riwayat stok masuk per produk)
+- [x] Backend: notif WA kritis otomatis saat stok ≤ 3 botol / ≤ 2 gram (dalam addStock)
+- [x] Backend: procedure gudang.dailyStockReport (ringkasan stok, restok 30 hari, proyeksi habis)
+- [x] Frontend: tab Tambah Stok Utama di AdminGudang (mode Tambah / Set Langsung + riwayat)
+- [x] Frontend: modal addStock dengan preview kalkulasi sebelum simpan
+- [x] Frontend: halaman AdminStokHarian dengan tabel + proyeksi + export CSV
+- [x] Route /admin/stok-harian + menu sidebar Laporan Stok
+
+## Sistem Gudang Lengkap + Verifikasi Transfer + Otomasi WA
+
+### Schema & Backend
+- [ ] Schema: kolom unit_type (botol/gram) sudah ada, pastikan products.stock & stockGram konsisten
+- [ ] Schema: tabel order_preparation (persiapan pesanan pegawai: gs_qty, kristal_qty, link_lokasi, status)
+- [ ] Backend: procedure addStock GS (per botol) & Kristal (per mg/g/kg) dengan konversi otomatis
+- [ ] Backend: auto-deduct stok gudang utama saat request/order dibuat, notif WA jika stok habis
+- [ ] Backend: procedure createPreparation (pegawai isi jumlah GS+Kristal+link lokasi → kirim ke admin ACC)
+- [ ] Backend: procedure accPreparation (admin ACC → kirim otomatis ke pembeli: rincian + link lokasi)
+- [ ] Backend: verifikasi bukti transfer via AI (cek asli/palsu dari foto yang dikirim pelanggan)
+- [ ] Backend: kirim produk otomatis dari katalog jika transfer asli, tolak + balas jika palsu
+- [ ] Backend: rekap WA lengkap ke pegawai & admin setelah produk dikirim (sisa stok semua produk)
+- [ ] Backend: ubah menu balasan WA pertama → tombol Beli Langsung / Request / Bayar Hutang
+
+### Frontend
+- [ ] Frontend: menu Tambah Stok di staff & admin dengan satuan GS (botol) & Kristal (mg/g/kg)
+- [ ] Frontend: label stok 1g, st (setengah=0.40), spr (supra=0.20) dengan konversi otomatis
+- [ ] Frontend: halaman Persiapan Pesanan pegawai (isi GS qty + Kristal qty + salin link lokasi)
+- [ ] Frontend: tombol ACC di admin untuk setujui persiapan dan kirim otomatis ke pembeli
+- [ ] Frontend: menu balasan WA pertama dengan 3 tombol: Beli Langsung / Request / Bayar Hutang
+- [ ] Frontend: kolom request produk (pilih dari katalog atau tulis manual)
+
+## Update Sistem WA + Persiapan Pesanan (Apr 2026)
+- [x] Schema: tabel order_preparations + transfer_verification_log
+- [x] Backend: router preparation.ts (create, list, getById, approve, reject, verifyTransfer, listVerifications)
+- [x] Backend: notif WA ke pegawai saat pesanan perlu dipersiapkan
+- [x] Backend: notif WA ke pembeli saat persiapan di-ACC admin (rekap + link lokasi)
+- [x] Backend: notif WA ke pegawai & admin setelah produk dikirim (rekap stok sisa)
+- [x] Backend: verifikasi bukti transfer AI (asli/palsu/tidak jelas) + notif WA pembeli
+- [x] Frontend: halaman StaffPreparation.tsx (form GS botol + Kristal mg/g/kg + foto + link maps)
+- [x] Frontend: halaman AdminPreparations.tsx (ACC/Tolak + tab Verifikasi Transfer)
+- [x] Frontend: menu "Persiapan Pesanan" di StaffDashboard
+- [x] Frontend: menu "✅ ACC Persiapan" di AdminLayout sidebar
+- [x] Route /staff/preparation + /admin/preparations
+- [x] Sistem prompt WA: menu 3 pilihan (1=Beli Langsung, 2=Request Produk, 3=Bayar Hutang)
+- [x] Sistem prompt WA: alur request produk dari gudang (catat dengan prefix [REQUEST])
+- [x] Sistem prompt WA: alur bayar hutang langsung dari menu
+
+## Fitur Request Pesanan di Toko (Apr 2026)
+- [x] Schema: tabel customer_requests (productName, quantity, notes, guestName, guestPhone, status, adminNotes)
+- [x] Backend: procedure customerRequests.submit (pelanggan kirim request produk, public + auth)
+- [x] Backend: procedure customerRequests.myList (pelanggan lihat request miliknya)
+- [x] Backend: procedure customerRequests.adminList (admin lihat semua request + filter status + search)
+- [x] Backend: procedure customerRequests.updateStatus (admin update + notif WA ke pelanggan)
+- [x] Backend: procedure customerRequests.delete (admin hapus request)
+- [x] Backend: notif WA ke admin saat ada request baru dari pelanggan
+- [x] Frontend: floating button kuning "📋 Request Produk" di StoreCatalog
+- [x] Frontend: modal form request (nama produk, jumlah, catatan, nama, nomor WA)
+- [x] Frontend: tab "Request Saya" di MyOrders.tsx dengan status badge
+- [x] Frontend: halaman AdminCustomerRequests.tsx (filter status, search, update status, hapus)
+- [x] Route /admin/customer-requests + menu sidebar "📋 Request Pelanggan"
+- [x] Link "Request" di StoreNavbar (desktop + mobile + dropdown user)
+
+## Otomasi Kirim Produk + Notif WA + Badge Sidebar (Apr 2026)
+- [x] Backend: verifyTransfer kirim secret_link + foto produk otomatis ke pembeli via WA setelah transfer asli
+- [x] Backend: kurangi stok produk otomatis setelah transfer terverifikasi asli
+- [x] Backend: customerRequests.updateStatus kirim notif WA ke nomor pelanggan saat status berubah
+- [x] Backend: procedure customerRequests.pendingCount untuk badge sidebar
+- [x] Frontend: modal Request StoreCatalog tampilkan grid pilihan produk dari katalog (klik = isi otomatis)
+- [x] Frontend: badge amber jumlah request pending di menu sidebar AdminLayout (auto-refresh 30 detik)
+
+## Sistem Pencatatan Pembelian Stok dari Supplier (Apr 2026)
+- [x] Schema: tabel purchase_orders (tanggal, supplier, total_harga, catatan, status)
+- [x] Schema: tabel purchase_items (productId, qty_botol, qty_gram, harga_beli_satuan, subtotal)
+- [x] Backend: procedure purchases.create (catat pembelian + otomatis tambah stok produk)
+- [x] Backend: procedure purchases.list (riwayat pembelian dengan filter tanggal)
+- [x] Backend: procedure purchases.detail (detail pembelian + item-itemnya)
+- [x] Backend: procedure purchases.summary (total belanja per bulan, per produk)
+- [x] Backend: stok otomatis berkurang saat order/eceran dibuat dari katalog
+- [x] Frontend: halaman AdminPembelian.tsx - form catat pembelian baru (pilih produk + qty + harga beli)
+- [x] Frontend: riwayat pembelian dengan total belanja dan ringkasan per produk
+- [x] Route /admin/pembelian + menu sidebar 🛒 Pembelian Stok
+- [x] Fix tsconfig.json: tambah drizzle/**/* ke include agar LSP tidak error
+
+## Foto Lokasi Otomatis + Pembelian Stok (Apr 2026)
+- [x] Backend: purchases.ts - catat pembelian stok dari supplier + stok otomatis bertambah + notif WA
+- [x] Backend: daftarkan purchasesRouter ke routers.ts
+- [x] Backend: procedure gudang.getLocationPhoto - ambil foto Street View otomatis dari koordinat
+- [x] Backend: procedure gudang.getLocationsWithPhotos - join products, tambah productName + locationLabel + streetViewUrl
+- [x] Frontend: AdminPembelian.tsx - form catat pembelian (pilih produk, qty, harga beli, supplier)
+- [x] Frontend: riwayat pembelian dengan total dan ringkasan per produk
+- [x] Frontend: StaffPreparation.tsx - picker lokasi dengan foto Street View otomatis + link maps
+- [x] Frontend: preview foto Street View inline di form persiapan pesanan
+- [x] Route /admin/pembelian + menu sidebar
+- [x] Kill proses tsc watcher lama (Mar30) yang menyebabkan stale LSP error
+
+## Grafik Stok + Hutang Otomatis & Manual (Apr 2026)
+- [x] Backend: procedure purchases.stockChart (stok masuk vs terjual per produk 30 hari)
+- [x] Backend: procedure purchases.productHistory (riwayat pembelian per productId)
+- [x] Backend: notif WA otomatis saat stok produk = 0 setelah order diproses
+- [x] Backend: procedure receivables.checkMyDebt (cek hutang aktif pelanggan via customerLabel)
+- [x] Backend: hutang otomatis dari order (sudah ada, trigger saat order dibuat)
+- [x] Frontend: AdminStokHarian - grafik garis stok masuk vs terjual (recharts)
+- [x] Frontend: AdminProducts - tab "Riwayat Beli" di detail produk (riwayat pembelian + harga rata-rata)
+- [x] Frontend: AdminReceivables - tombol "Tambah Hutang Manual" + form (sudah ada)
+- [x] Frontend: reminder hutang saat pelanggan order baru (banner amber jika ada hutang outstanding)
+- [x] Frontend: AdminDashboard - skeleton loading menggantikan spinner
+- [x] Unit test: stockChart, productHistory, checkMyDebt (13 tests passed)
+
+## Fitur Lanjutan Apr 2026 - Batch 2
+
+- [x] Backend: tambah parameter dateFrom/dateTo di getOrders dan adminList procedure
+- [x] Frontend: AdminOrders - filter tanggal (hari ini / 7 hari / 30 hari / 3 bulan / custom)
+- [x] Backend: procedure orders.pendingCount untuk badge sidebar
+- [x] Backend: procedure receivables.overdueCount untuk badge sidebar
+- [x] Frontend: AdminLayout - badge notifikasi pesanan pending + hutang jatuh tempo di sidebar
+- [x] Backend: procedure analytics.reportSummary (omzet, produk terlaris, pelanggan aktif)
+- [x] Frontend: halaman AdminLaporan (/admin/laporan) dengan ringkasan dan ekspor Excel + cetak
+- [x] Frontend: tambah menu "Laporan Ringkas" di sidebar admin (grup Keuangan)
+- [x] Backend: analyticsRouter terdaftar di appRouter
+- [x] 127 unit tests passed
+
+## Integrasi Foto Editor (MCM PICTURE) - Apr 2026
+- [x] Frontend: AdminProducts - tombol "Edit Foto" setelah upload gambar produk (PhotoEditor)
+- [x] Frontend: AdminWaInbox - tombol "Kirim Foto+Anotasi" ke pelanggan via WA (PhotoEditor + sendImageToPhone)
+- [x] Frontend: AdminWaInbox - upload foto langsung dari area input chat dengan editor
+- [x] 127 unit tests passed, 0 TypeScript errors
+
+## Perbaikan Lanjutan Apr 2026 - Sesi Baru
+- [x] Backend: perbaiki getChats - tampilkan nama dari wa_chats.name jika tidak ada di CRM/receivables
+- [x] Frontend: AdminWaInbox - tampilkan nama pelanggan dengan lebih baik (prioritas: CRM name > wa_chats.name > phone)
+- [x] Frontend: AdminPembelian - tambah input konversi satuan otomatis (kg→gram, tampilkan preview konversi)
+- [x] Frontend: AdminGudangUtama - tampilkan stok dalam format kg jika ≥1000g, gram jika <1000g, mg jika <1g
+- [x] Frontend: AdminCRM tab Viber - perbaiki panduan setup dengan langkah yang lebih jelas
+- [x] Backend: procedure wa.updateContactName - admin bisa edit nama kontak langsung dari chat
+
+## Perbaikan Apr 2026
+- [x] Panduan Viber Bot 5 langkah dengan visual di AdminCRM
+- [x] Form pembelian: toggle input gram/kg dengan konversi otomatis
+- [x] Form pembelian: toggle harga per gram/per kg dengan konversi otomatis
+- [x] Preview konversi satuan di bawah input (gram→kg atau kg→gram)
+- [x] Bot WA: balas "p" dengan "p", ikuti alur percakapan natural tanpa langsung kirim katalog
+- [x] Bot WA: katalog hanya tampil jika pelanggan eksplisit minta ("ada apa aja?", "katalog", dll)
+- [x] Notif WA ke pegawai (SERVICE_WA) saat ada request/pesanan baru masuk
+- [x] Badge notif di menu "Request Order" sidebar (waPendingCount)
+- [x] Tab "Request WA" di halaman StaffRequestOrder dengan daftar request dari WA
+- [x] Procedure fulfillWaRequest: upload foto + kirim ke pelanggan + kurangi stok gudang otomatis
+
+## Fitur Lanjutan Apr 2026 (Batch 2)
+- [ ] Notif WA ke admin saat pegawai selesai proses request (fulfillWaRequest)
+- [ ] Filter request berdasarkan produk di tab Request WA
+- [ ] Halaman riwayat pengiriman pegawai (foto + produk + pelanggan)
+
+## Fitur Lanjutan Apr 2026 (Batch 2) - SELESAI
+- [x] Notif WA ke admin saat pegawai selesai proses request (fulfillWaRequest)
+- [x] Filter request berdasarkan produk di tab Request WA
+- [x] Halaman riwayat pengiriman pegawai (foto + produk + pelanggan) - /admin/riwayat-pengiriman
+
+## Fitur Auto-Kirim Lokasi Setelah Bukti TF - SELESAI
+- [x] Fungsi autoSendLocationOnPayment di webhookWhatsapp.ts
+- [x] Saat gambar masuk + ada pesanan confirmed → cek lokasi produk → kirim foto+link otomatis
+- [x] Jika lokasi tidak tersedia → notif admin WA untuk kirim manual
+- [x] Stok produk berkurang otomatis setelah lokasi terkirim
+- [x] Riwayat pengiriman tercatat di locationSentLog
+
+## Anti-Fraud System (Apr 2026)
+- [x] Tambah tabel fraud_blacklist dan payment_verifications ke schema
+- [x] Jalankan migrasi database untuk tabel baru
+- [x] Implementasi blacklist nomor fraud di webhook (auto-blacklist jika fraud confidence tinggi)
+- [x] Cek nominal otomatis: notif admin jika nominal berbeda >10% dari yang diharapkan
+- [x] Simpan log setiap verifikasi bukti TF ke database
+- [x] Buat fraud router dengan procedures listVerifications, verificationStats, listBlacklist, addBlacklist, toggleBlacklist, deleteBlacklist
+- [x] Buat halaman AdminFraudLog.tsx dengan tab Log Verifikasi dan Blacklist Nomor
+- [x] Tambah menu "Log Anti-Fraud" di sidebar grup Keuangan
+- [x] Tambah route /admin/fraud-log di App.tsx
+
+## Perbaikan Pegawai - Apr 2026
+- [x] Halaman StaffTokoOrders.tsx - kelola order toko online dari akun pegawai
+- [x] Procedure staffList, staffDetail, staffUpdateStatus, staffConfirmPayment, staffPendingCount di orders router
+- [x] Menu "Pesanan Toko" di sidebar pegawai dengan badge notif
+- [x] Fitur konfirmasi pembayaran, lihat bukti TF, update status, tandai selesai dari akun pegawai
+
+## Perbaikan Form Tambah Hutang - Apr 2026
+- [x] Form Tambah Hutang: dropdown pilih pelanggan existing (nama + nomor WA terisi otomatis)
+- [x] Tampilkan info hutang aktif pelanggan yang dipilih sebelum simpan
+- [x] Backend: procedure receivables.listCustomers untuk ambil daftar pelanggan unik dari tabel hutang
+
+## 3 Peningkatan Fitur Hutang - Apr 2026
+- [x] Tampilan total hutang per pelanggan (grouped view) - baris dikelompokkan per pelanggan
+- [x] Tombol Catat Cicilan langsung dari baris tabel (tanpa buka detail dulu)
+- [x] Notif WA otomatis ke pelanggan saat admin tambah hutang baru
+
+## Galeri Foto di Dialog Kirim ke Pembeli - Apr 2026
+- [x] Tambah tombol Galeri Foto di section upload foto produk dialog Kirim ke Pembeli (StaffRequestOrder)
+
+## Penyempurnaan Menyeluruh (Apr 2026)
+- [x] Perbaiki bug fraud.ts: await getDb() tanpa await
+- [x] Perbaiki error TypeScript di gudang.ts (stockMap type annotation)
+- [x] Perbaiki error TypeScript di StaffRequestOrder.tsx (OrderStatus type)
+- [x] Tambah galeri foto di StaffPreparation (dua tombol: Ambil Foto + Galeri)
+- [x] Tambah kompresi foto otomatis di StaffPreparation (max 800KB, 1200px)
+- [x] Tambah kompresi foto otomatis di StaffRequestOrder (max 800KB, 1200px)
+- [x] Global CSS: scrollbar styling, smooth transitions, touch targets, focus visible
+
+## Redesign Tampilan Chat WA Inbox (Apr 2026)
+- [x] Redesign layout chat: background WhatsApp-style, bubble pesan lebih bagus
+- [x] Perbaiki header kontak: avatar lebih besar, status badge, info hutang
+- [x] Perbaiki input area: textarea multiline, tombol lebih rapi dan modern
+- [x] Perbaiki daftar kontak: item lebih rapi, avatar warna-warni per inisial
+
+## Perbaikan StaffTokoOrders - Notif & Kirim Foto+Lokasi
+- [x] Tambah polling otomatis notifikasi pesanan baru di StaffTokoOrders (setiap 30 detik)
+- [x] Tambah toast notifikasi + suara saat ada pesanan baru masuk
+- [x] Tambah procedure backend: staffSendPhotoToCustomer dan staffSendLocationToCustomer
+- [x] Tambah UI di detail pesanan: tombol Kirim Foto Produk dan Kirim Lokasi ke pelanggan via WA
+
+## Fitur Keamanan Tambahan
+- [x] Tombol Keluar/Ganti Akun di header toko untuk pembeli
+- [x] Session timeout otomatis 7 hari untuk token pembeli
+- [x] Log akses mencurigakan ke /admin atau /staff yang gagal (tampil di admin)
+
+## Sistem Notifikasi Lengkap Pegawai
+- [x] Backend procedure getStaffNotifications (agregasi semua notif)
+- [x] Komponen StaffNotificationBell dengan badge merah dan panel dropdown
+- [x] Polling real-time setiap 15 detik untuk notif baru
+- [x] Suara notifikasi saat ada notif baru
+- [ ] Browser push notification permission
+- [ ] Integrasi ke semua halaman staff via layout
+
+## Perbaikan Menyeluruh Apr 2026 (Batch 3)
+- [x] Rekap mingguan otomatis tiap Senin jam 07:00 WIB (tambah ke dailyRecapScheduler)
+- [x] Tombol "Kirim Rekap Sekarang" di panel admin (trigger manual harian + mingguan)
+- [x] Notif WA stok produk = 0 setelah lokasi terakhir dikirim (di store.ts & waChat.ts)
+- [x] Tombol Keluar/Ganti Akun di header toko untuk pembeli (sudah ada, cek visibilitas)
+- [x] Tambah procedure admin.triggerDailyRecap dan admin.triggerWeeklyRecap
+- [x] Perbaiki AdminWaInbox: tampilkan nama kontak lebih baik (CRM > wa_chats.name > phone)
+- [x] Perbaiki AdminGudangUtama: tampilkan stok dalam format kg/gram/mg otomatis
+- [x] Perbaiki AdminPembelian: tambah konversi satuan otomatis (kg→gram)
+
+## Sistem Login Username/Password (Ganti Manus OAuth)
+- [ ] Schema: tabel `app_users` (id, username, password_hash, role: admin/staff/buyer, name, active)
+- [ ] Backend: procedure auth.appLogin (username + password → JWT session)
+- [ ] Backend: procedure auth.appMe (ambil user dari session)
+- [ ] Backend: procedure auth.appLogout (hapus session)
+- [ ] Backend: procedure admin.listAppUsers (kelola akun)
+- [ ] Backend: procedure admin.createAppUser (buat akun baru)
+- [ ] Backend: procedure admin.updateAppUser (edit akun)
+- [ ] Backend: procedure admin.deleteAppUser (hapus akun)
+- [ ] Frontend: halaman /login terpadu (username + password, pilih role otomatis)
+- [ ] Frontend: update AdminRoute - cek session app_users bukan Manus OAuth
+- [ ] Frontend: update StaffRoute - cek session app_users
+- [ ] Frontend: update StoreRoute - pembeli login dengan username/password
+- [ ] Frontend: halaman /admin/users - kelola semua akun (admin, pegawai, pembeli)
+- [ ] Seed: akun default admin (admin/admin123), pegawai (pegawai/pegawai123), pembeli (pembeli/pembeli123)
+
+## Sistem Login Username/Password (Apr 2026)
+- [x] Buat halaman Login terpadu /login dengan username + password
+- [x] Update AdminRoute: redirect ke /login bukan Manus OAuth
+- [x] Update StaffRoute: redirect ke /login bukan /store
+- [x] Seed akun default: admin/admin123, pegawai/pegawai123, pembeli/pembeli123
+- [x] Reset password admin yang sudah ada ke admin123
+
+## Perbaikan Alur Request Order In-App (Apr 2026)
+- [x] Fix requestOrders.ts: ganti staffProcedure/adminProcedure lokal dengan yang null-safe dari trpc.ts
+- [x] Backend adminConfirm: kurangi stok gudang otomatis saat admin ACC (per item: botol/gram)
+- [x] Backend adminConfirm: buat notif in-app untuk pegawai (bukan WA) saat ada pesanan di-ACC
+- [x] Backend fulfill: stok sudah dikurangi saat adminConfirm, tidak double-deduct
+- [x] Frontend StaffRequestOrder: tampilkan pesanan status "confirmed" dengan tombol "Siapkan Pesanan"
+- [x] Frontend StaffRequestOrder: form siapkan pesanan (upload foto + input link manual per item)
+- [x] Frontend AdminRequestOrders: tampilkan request pending dengan tombol ACC + input harga
+- [x] Frontend AdminRequestOrders: badge notif jumlah request pending di sidebar
+
+## Auto Request Order dari Toko & WA
+- [x] Database: Tambah kolom sourceOrderId, sourceOrderNumber, sourceType di staff_request_orders
+- [x] Backend: Fungsi createRequestOrderFromOrder() di requestOrders.ts (exported helper)
+- [x] Backend: Trigger auto-create request order saat order baru dari toko (store.ts)
+- [x] Backend: Trigger auto-create request order saat order baru dari WA (waChat.ts)
+- [x] Frontend: Label sumber order (🛒 Toko / 💬 WA) di card request order
+- [x] Frontend: Tampilkan nomor order asal di card request order
+- [x] Frontend: Admin bisa akses menu Request Order (/admin/request-orders)
+- [x] Frontend: isAdmin di StaffRequestOrder.tsx juga cek permanentLinkRole
+
+## PIN Konfirmasi Admin
+- [x] Database: kolom pinHash di tabel permanent_links
+- [x] Backend: prosedur hasPin, verifyPin, setPin, removePin di permanentLinksRouter
+- [x] Frontend: komponen AdminPinGate (layar PIN numpad 6 digit)
+- [x] Frontend: integrasi AdminRoute - cek PIN sebelum masuk panel admin
+- [x] Frontend: simpan status PIN di sessionStorage (hilang saat tutup browser)
+- [x] Frontend: tombol Atur PIN (ikon kunci kuning) di card link admin di AdminPermanentLinks
+- [x] Frontend: dialog Set PIN dengan input 6 angka dan tombol hapus PIN
+
+## Pilih Foto dari Galeri HP (StaffUploadRequest)
+- [x] Tambah tombol "Kamera" (capture=environment) dan "Galeri HP" (tanpa capture) di area upload foto pegawai
+- [x] Input file terpisah: cameraInputRef (capture) dan galleryInputRef (tanpa capture)
+- [x] Preview foto yang dipilih dari galeri atau kamera
+
+## Fix Bug: Route Staff Meminta Login Admin
+- [x] Ubah route /admin/gudang-utama dari AdminRoute ke StaffRoute
+- [x] Ubah route /admin/stok-harian dari AdminRoute ke StaffRoute
+- [x] Ubah route /admin/pembelian dari AdminRoute ke StaffRoute
+- [x] Ubah route /admin/customer-requests dari AdminRoute ke StaffRoute
+- [x] Ubah route /admin/panduan dari AdminRoute ke StaffRoute
+- [x] Ubah route /admin/request-orders dari AdminRoute ke StaffRoute
+
+## Redesign Gudang Utama
+- [x] Set ulang stok: GS=164 botol (beli 450rb/botol), Kristal=225 gram (beli 550rb/gram)
+- [x] Kolom purchasePrice sudah ada di schema products
+- [x] Backend: router gudang mengembalikan purchasePrice, stockGram, sellByWeight, unit
+- [x] Alur pecahan: gudang 1G/ST/SPR ambil dari Kristal Utama, ketelitian 0,01 gram
+- [x] GS dihitung per botol, Kristal dihitung per gram
+- [x] Pegawai bisa langsung buat Request Order jika stok pecahan habis
+- [x] Info alur stok ditampilkan di admin dan pegawai (panel info biru)
+- [x] Redesign frontend halaman Gudang Utama (card GS, Kristal Utama, Pecahan)
+
+## Fix Error Ringkasan Admin
+- [x] Fix error Select.Item value kosong di halaman /admin/permission (was in AdminPembelian.tsx)
+- [x] Perbaiki alur pegawai: pegawai tahu ada request apa + bisa upload foto/link per request (fix akses staff ke WA request)
+
+## Fix Error & Akses Staff (Apr 2026 - Session Baru)
+- [x] Fix SelectItem value="" di AdminPembelian.tsx (ubah ke value="all" dengan handler konversi)
+- [x] Fix isAdminCtx import yang hilang di store.ts
+- [x] Fix itemGrams tidak ada di input schema fulfill requestOrders (tambah ke zod schema)
+- [x] Fix getWaPendingOrders: ubah isAdminCtx → isStaffCtx agar pegawai bisa akses Request WA
+- [x] Fix waPendingCount: ubah ctx.user.role check → isStaffCtx agar tidak crash untuk permanent link staff
+- [x] Fix fulfillWaRequest: ubah ctx.user.role check → isStaffCtx agar pegawai bisa proses request
+- [x] Fix ctx.user?.name null safety di fulfillWaRequest notification
+- [x] Fix sendWhatsAppImage: ubah ctx.user.role check → isStaffCtx
+- [x] Vitest: 8 tests passing untuk semua fix di atas (staffAccess.test.ts)
+
+## Fitur Edit Hutang Piutang (Apr 2026)
+- [x] Backend: procedure receivables.update (edit nominal, catatan, jatuh tempo, status)
+- [x] Frontend: dialog/form edit hutang di halaman admin hutang piutang
+- [x] Frontend: tombol Edit di setiap baris hutang
+- [x] Vitest: test untuk procedure edit hutang (24 tests passing)
+
+## Fix Logika Pembayaran Hutang - Nomor Telepon Universal (Apr 2026)
+- [x] Analisis semua kode yang memfilter/validasi nomor telepon di fitur hutang/pembayaran
+- [x] Buat module phoneUtils.ts dengan fungsi universal (getPhoneFormats, getLastNDigits, normalizePhoneForWA)
+- [x] Perbaiki phone matching di webhookWhatsapp.ts, aiReply.ts, receivables.ts, waChat.ts, webhookViber.ts
+- [x] Perbaiki phone normalization di staff.ts, requestOrders.ts, payment.ts, admin.ts, store.ts
+- [x] Export normalizePhone dari wablas.ts agar bisa dipakai di phoneUtils.ts
+- [x] Vitest: 31 tests passing untuk phoneUtils (normalizePhone, getPhoneFormats, getLastNDigits, cross-format matching)
+
+## Fix Pembayaran Hutang Otomatis (Apr 2026)
+- [x] Analisis alur pembayaran hutang saat ini (manual vs otomatis)
+- [x] Buat module autoSettleDebt.ts — shared helper untuk auto-settle hutang
+- [x] Stripe webhook (checkout.session.completed) → auto-settle hutang
+- [x] handlePaymentCallback (Midtrans/transfer) → auto-settle hutang
+- [x] verifyPayment (polling) → auto-settle hutang
+- [x] Admin updateStatus (manual set paid) → auto-settle hutang
+- [x] Notifikasi WA otomatis ke pelanggan saat hutang otomatis terbayar
+- [x] Vitest: 8 tests passing untuk autoSettleDebt (settle, partial, cap, error handling)
+
+## Alur WA Bot: Bukti Transfer → Tanya Tujuan → Auto-Settle Hutang (Apr 2026)
+- [x] Analisis kode AI reply saat menerima bukti transfer (foto/gambar)
+- [x] Modifikasi alur: bot tanya "untuk nyicil hutang atau beli/order?"
+- [x] Jika jawab nyicil hutang: langsung auto-settle tanpa persetujuan admin + kirim sisa hutang
+- [x] Jika jawab beli/order: lanjut alur order biasa
+- [x] Jika nominal tidak terdeteksi: tanya nominal manual (awaiting_debt_amount)
+- [x] Notif admin bahwa hutang otomatis dicatat
+- [x] Vitest: 16 tests passing (keyword detection, debt distribution, amount parsing, greeting, store link)
+
+## Greeting Chat Awal (p, bos, ready) → Sopan + Link Toko (Apr 2026)
+- [x] Deteksi keyword greeting (p, bos, ready, dll) di awal chat via AI prompt update
+- [x] Balas sopan + kirim link toko (acestore.bot/akses/pembeli-ace) agar pembeli bisa pilih produk di aplikasi
+- [x] Update contoh percakapan di AI prompt agar konsisten dengan greeting baru
+- [x] Hapus larangan kirim link toko di AI prompt (sebelumnya dilarang kirim link apapun)
+
+## Timeout Auto-Cancel Pending Context (Apr 2026)
+- [x] Cek timestamp terakhir pending_photo_context saat pesan masuk
+- [x] Jika lebih dari 10 menit, otomatis reset context (null-kan semua pending_photo fields)
+- [x] Lanjutkan proses pesan seperti biasa setelah reset
+
+## Kirim Password Toko Otomatis di Greeting WA (Apr 2026)
+- [x] Saat AI reply greeting, sertakan password toko dari storeSettings
+- [x] Update AI prompt agar menyertakan password toko di greeting response
+- [x] Fetch password toko dari database (storeSettings key: store_password)
+
+## Log Riwayat Auto-Settle Hutang di Admin Panel (Apr 2026)
+- [x] Database: Tabel auto_settle_logs (id, phone, name, amount, remaining_debt, bank, sender, method, source, media_url, receivable_ids, created_at)
+- [x] Backend: Catat log setiap kali auto-settle hutang terjadi (dari WA bot, Stripe, Midtrans, admin)
+- [x] Backend: Procedure receivables.autoSettleLogs dengan filter source dan pagination
+- [x] Frontend: Tab "Auto-Settle Log" di halaman admin hutang piutang dengan filter sumber dan pagination
+- [x] Vitest: 15 tests passing (timeout, greeting password, auto-settle log structure, keyword detection)
+- [x] Frontend: Tampilkan detail (pelanggan, nominal, sisa hutang, bank, waktu, bukti, sumber)
+
+## Bug: Hutang STIV Tidak Otomatis Berubah (Apr 2026)
+- [x] Debug: kode auto-settle WA baru belum ter-deploy ke production (masih pakai alur lama)
+- [x] Root cause: autoSettleLogs sempat di-place di paymentRequestsRouter yang tidak import protectedProcedure
+- [x] Fix: autoSettleLogs sudah dipindah ke receivablesRouter (line 404) + protectedProcedure sudah di-import
+- [x] Manual-settle hutang STIV: 2x Rp 2.000.000 (bukti transfer Apr 6 & Apr 7) sudah dicatat
+- [x] Saldo STIV sekarang: Rp 37.500.000 total, Rp 6.500.000 terbayar, sisa Rp 31.000.000
+
+## Bug: acestore.vip/admin menampilkan 404 (Apr 2026)
+- [ ] Fix SPA routing di production - direct URL access ke /admin, /login, dll menampilkan 404
+- [ ] Pastikan server serve index.html untuk semua client-side routes
+
+## Update Data Produk & Hutang Piutang (Apr 2026)
+- [x] Cek dan perbarui produk di katalog (hapus/edit yang tidak relevan)
+- [x] Perbarui data hutang piutang STIV/Stiven dan pelanggan lain
+- [x] Pastikan semua saldo hutang sudah sesuai dengan pembayaran terbaru
+- [x] Tambahkan hutang Huri (+62 897-0016-210) total Rp 107.450.000
+- [x] Koreksi Stiv: total hutang diubah ke Rp 33.000.000
+- [x] Koreksi PPL NEW: cicilan 40jt → 4jt, paidAmount sekarang Rp 11.500.000
+- [x] Kirim ringkasan hutang via WA ke semua pelanggan
+
+## Tombol Edit & Hapus di Semua Fitur Admin (Apr 2026)
+- [x] Audit semua halaman admin untuk cek Edit/Delete yang belum ada
+- [x] Tambah Edit/Delete di halaman yang belum punya
+
+## Bug: Notifikasi WA ke Pegawai Tidak Terkirim Saat Ada Order (Apr 2026)
+- [x] Cek kenapa notifikasi WA ke pegawai tidak terkirim saat ada orderan baru
+- [x] Fix kode notifikasi agar pegawai terima WA saat ada order masuk
+- [x] notifyNewOrder: tambah staffPhone 085600708739 (sebelumnya hanya adminPhone)
+- [x] notifyDebtPaymentRequest: tambah staffPhone
+- [x] notifyPaymentConfirmed: tambah staffPhone
+
+## Improvement: 3 Fitur Baru (Apr 2026)
+- [x] Setting nomor pegawai di admin panel (ganti hardcode 085600708739)
+- [x] Notifikasi in-app untuk pegawai (selain WA)
+- [x] Log pengiriman notifikasi WA di admin panel (tracking berhasil/gagal)
+
+## Bug: Pesan WA ke Pegawai Kadang Terkirim Kadang Tidak (Apr 2026)
+- [x] Diagnosa penyebab: ECONNRESET DB errors + no retry + rate limit dari parallel sends
+- [x] Fix: retry 3x dengan exponential backoff (2s, 4s), timeout 15s, delay 1.5s antar target
+- [x] Ganti Promise.allSettled parallel → sendToMultipleTargets sequential dengan delay
+- [x] Tambah AbortController timeout 15s per request
+- [x] Tambah logging per attempt untuk monitoring
+
+## Bug: Nama Kontak Tidak Otomatis Muncul & Simpan (Apr 2026)
+- [x] Diagnosa: Wablas pushname sering kosong, nama hanya disimpan sebagai nomor telepon
+- [x] Fix: cross-reference nama dari receivables & orders saat pushname tidak tersedia
+- [x] Tambah field msg.notify, msg.notifyName, msg.sender_name sebagai fallback
+- [x] Auto-update nama kontak lama yang masih berupa nomor jika ditemukan di DB
+- [x] Backfill 5 kontak (Gimen, KSR, Adu, MENDEM, Huri) dari data receivables/orders
+
+## Fix: Support Nomor Telepon Internasional (Apr 2026)
+- [x] Update phone matching agar support berbagai negara (20 country codes: ID, AU, US, UK, SG, MY, TH, JP, KR, CN, IN, DE, FR, IT, RU, BR, PH, VN, UAE, SA)
+- [x] Tambah fuzzy match (last 9 digits) sebagai fallback jika exact match gagal
+- [x] Format-aware matching: +62 8xx-xxxx-xxxx, +61 4xx xxx xxx, +1 (xxx) xxx-xxxx, dll
+
+## Kristal Utama + Sistem Penyiapan Order (Apr 2026)
+- [x] Buat ulang produk Kristal Utama di database (ID: 180001)
+- [x] Fix card Kristal Utama lookup: 'stok riquest' → 'Kristal Utama'
+- [x] Auto-deduct Kristal Utama saat pecahan (1G/ST/SPR) ditambah stok
+- [x] Halaman Penyiapan Order:
+  - [x] Pilih: ambil dari stok jadi ATAU siapkan baru dari Kristal Utama
+  - [x] Jika siapkan baru: pilih Kristal saja atau Kristal + GS
+  - [x] Input jumlah: Kristal per gram (0.01g-kg), GS per botol
+  - [x] Otomatis kurangi stok Kristal Utama / GS saat admin ACC
+  - [x] Upload foto produk + link lokasi (sudah ada)
+  - [x] Opsi paste manual link lokasi + upload foto dari galeri (sudah ada)
+- [x] Integrasi: order dari WA dan aplikasi masuk ke penyiapan yang sama (waOrderId)
+
+## Fix Request Order Page (Apr 8 2026)
+- [x] Hapus auto-match stok yang salah untuk produk non-katalog (misal "arbal ori")
+- [x] Link lokasi Maps hanya muncul setelah penyiapan selesai, bukan di setiap order mentah
+- [x] Bersihkan tampilan Request Order — hanya tampilkan info relevan
+- [x] Fix TypeScript errors di purchases.ts (stale incremental cache, cleared)
+
+## Fix Logika Pembayaran Hutang + Beli Produk (Apr 8 2026)
+- [x] Perbaiki logika: jika pelanggan bilang transfer untuk beli produk + sisa untuk hutang, hanya sisa yang dikurangi dari hutang (bukan seluruh nominal transfer)
+- [x] Contoh kasus: Transfer 1jt, beli 1G 850rb, sisa 150rb buat hutang → hutang hanya dikurangi 150rb, bukan 1jt
+- [x] Tambah opsi ke-3 di pertanyaan bot: "Sebagian beli, sebagian hutang" (ketik "campuran" atau "3")
+- [x] Tambah state awaiting_split_amount untuk menanyakan nominal hutang jika tidak jelas
+- [x] Parse nominal sisa dari pesan pelanggan (4 regex patterns)
+- [x] Kata "sisa" tidak lagi trigger pure debt — harus ada konteks debt/order keyword
+- [x] Notifikasi admin untuk split payment
+- [x] 33 unit tests passing untuk intent detection, split parsing, dan distribution logic
+
+## Koreksi Data Hutang Huri (Apr 8 2026)
+- [x] Cek data pembayaran hutang Huri yang salah tercatat (1.000.000 seharusnya 150.000)
+- [x] Koreksi: kembalikan selisih 850.000 ke saldo hutang Huri
+
+## Koreksi SEMUA Data Hutang Huri (Apr 8 2026)
+- [ ] Cek seluruh riwayat pembayaran hutang Huri dari awal
+- [ ] Cek auto-settle logs dan WA chat history untuk Huri
+- [ ] Identifikasi semua pembayaran yang salah
+- [ ] Koreksi semua data yang salah di database
+- [ ] Verifikasi saldo hutang akhir yang benar
+
+## Fitur Tanya Bayar Langsung vs Hutang di WA Bot (Apr 8 2026)
+- [x] Setelah order WA diterima, bot tanya: "Bayar langsung atau bayar belakang (hutang)?"
+- [x] Kalau bayar langsung → alur normal (kirim rekening, tunggu bukti transfer)
+- [x] Kalau bayar belakang (hutang) → bot catat pesanan, notif admin untuk tentukan harga & catat hutang
+- [x] Hutang baru perlu approval admin sebelum dicatat final (admin klik "Catat Hutang" di WA Inbox)
+- [x] Notifikasi ke admin untuk approve/reject hutang baru
+- [x] Alias produk: PS, PASIR, G, GRAM, GR, KRISTAL = produk yang sama (noted, tested)
+
+## Update Stok Utama & Edit/Hapus Request Order (Apr 8 2026)
+- [x] Update stok Kristal: sisa 117,64g = 1 ons + 17,64g (setelah laku 0,90g)
+- [x] Update stok GS: sisa 136 botol (setelah laku 13 botol)
+- [x] Tambah opsi edit di halaman Request Order
+- [x] Tambah opsi hapus di halaman Request Order
+
+## Edit/Hapus Request Order & Fix Bot OK (Apr 8 2026)
+- [x] Tambah backend procedure edit WA pending order (update productRequest, customerName, dll)
+- [x] Tambah backend procedure delete/hapus WA pending order
+- [x] Tambah UI tombol edit & hapus di tab WA Request (dropdown menu ⋮)
+- [x] Tambah UI tombol edit & hapus di tab List (staff request orders) (dropdown menu ⋮)
+- [x] Fix bot yang suka balas "OK" saat admin balas via WA (deteksi outgoing + echo bot 30s)
+
+## Notifikasi In-App (Apr 8 2026)
+- [ ] Database: Tabel notifications (id, userId, type, title, message, link, isRead, createdAt)
+- [ ] Backend: Procedure list notifications (dengan filter read/unread)
+- [ ] Backend: Procedure mark as read (single & mark all)
+- [ ] Backend: Procedure unread count
+- [ ] Backend: Trigger notifikasi saat order baru, pembayaran masuk, stok menipis, dll
+- [ ] Frontend: Bell icon di header/navbar dengan badge unread count
+- [ ] Frontend: Dropdown notifikasi saat klik bell (daftar notif terbaru)
+- [ ] Frontend: Halaman /notifications untuk lihat semua notifikasi
+- [ ] Frontend: Mark as read saat klik notifikasi
+
+## Web Push Notification (Apr 8 2026)
+- [x] Generate VAPID keys untuk Web Push
+- [x] Database: Tabel push_subscriptions (userId, endpoint, keys, createdAt)
+- [x] Backend: Helper sendPushNotification untuk kirim push via web-push library
+- [x] Backend: Procedure subscribe/unsubscribe push + test push + isPushSubscribed
+- [x] Service Worker: sw.js untuk menerima push di background + notificationclick handler
+- [x] Frontend: Push toggle di NotificationBell + StaffNotificationBell dropdown
+- [x] Integrasi: createNotification otomatis kirim push ke subscriber
+- [x] Klik notifikasi push langsung buka halaman terkait
+- [x] 9 unit tests passing (VAPID keys, module import, sendPushToRole/User)
+
+## Fix Halaman Pegawai (Apr 8 2026)
+- [ ] Loading muter-muter terus di Request Order saat buka dari panel pegawai
+- [ ] Header menunjukkan "Panel Admin" padahal login sebagai Pegawai
+
+## Fix Production Issues (Apr 8 2026)
+- [x] Fix loading muter-muter: StaffRoute/AdminRoute bypass loading check saat permanentLinkRole sudah ada
+- [x] Fix link pegawai "Link Tidak Ditemukan" di acestore.vip/akses/pegawai-ace (kode sudah benar, perlu deploy ulang)
+
+## Fix Bot WA Balas OK + Bukti Transfer Tidak Otomatis (Apr 8 2026)
+- [x] Bot masih balas "OK" ke pesan outgoing admin — hapus OK/OKE dari SELESAI_KEYWORDS + tambah deteksi echo admin reply pendek
+- [x] Bot tidak memproses bukti transfer otomatis — ganti generic reply dengan tanya tujuan transfer (awaiting_purpose)
+- [x] Bot harus tanya: "Pembayaran ini untuk hutang atau pembelian produk?" saat terima bukti transfer tanpa pesanan/hutang aktif
+
+## Fix Panel Pegawai (Apr 8 2026)
+- [x] Header menunjukkan "Panel Admin" padahal login sebagai pegawai — pageTitle fallback sekarang role-aware ("Panel Pegawai" untuk staff)
+- [x] Notifikasi link (Pesan WA Baru) mengarah ke 404 — tambah route /staff/wa-inbox di App.tsx
+- [x] Tambah entry Dashboard dan WA Inbox di sidebar NAV_GROUPS untuk role staff
+
+## Fix Log Notif WA Kosong (Apr 8 2026)
+- [x] Halaman Log Notif WA (/admin/wa-logs) kosong — Root cause: Drizzle schema kolom `wa_log_status` tidak cocok dengan DB kolom `status`
+- [x] Fix: ubah mysqlEnum("wa_log_status") → mysqlEnum("status") di schema.ts, tambah error logging di waNotificationLogger.ts
+
+## Improvement Panel Pegawai & Log WA (Apr 8 2026)
+- [x] Tambah filter tanggal di halaman Log Notif WA (/admin/wa-logs) — date range + quick buttons (Hari Ini, 7 Hari, 30 Hari, 90 Hari)
+- [x] Tambah sidebar entries staff: /staff/orders, /staff/request-orders, /staff/upload-requests, /staff/preparation
+- [x] Sidebar sudah role-based — menu admin-only (Keuangan, WhatsApp & CRM, Akses & Pelanggan, Pengaturan) otomatis tersembunyi untuk staff
+
+## Fix Error Simpan Persiapan ACC (Apr 8 2026)
+- [x] Error "Gagal simpan: Unexpected token '<', DOCTYPE is not valid JSON" — Fix: upload foto ke S3 via /api/upload/photo terpisah, kirim URL ke tRPC (bukan base64 di body)
+
+## Fix Request Order Tab Order - Tombol Kirim (Apr 8 2026)
+- [x] Order draft tidak ada tombol Kirim/Submit — tambah tombol "Kirim ke Admin" (biru) di order card saat status draft
+- [x] Tombol memanggil requestOrders.submit mutation yang mengubah draft → pending + notif WA ke admin
+
+- [x] Bug: Halaman Permintaan Unggah (/staff/upload-requests) error saat pencet tombol Kirim ke Admin — foto base64 di tRPC body kena limit production proxy, perlu upload S3 terpisah
+- [x] Bug: Rekap Harian WA tidak konsisten — menunjukkan 0 transaksi padahal ada transaksi/pengeluaran asli hari itu (fix: tambah sumber data orders + staff_request_orders)
+
+## Notifikasi WA ke Pegawai saat Ada Orderan Baru (Apr 8 2026)
+- [x] Notif WA ke pegawai saat order WA bot baru masuk (TANPA harga, hanya info pembeli + produk + jumlah) — sudah ada
+- [x] Notif WA ke pegawai saat order toko online baru dibayar (TANPA harga) — fixed, pesan terpisah admin vs pegawai
+- [x] Notif WA ke pegawai saat staff request order baru masuk (TANPA harga) — sudah ada via WA webhook
+- [x] Notif WA hutang (pengajuan bayar hutang + konfirmasi pembayaran) JANGAN dikirim ke pegawai — hanya ke admin
+
+## Bug Bot WA - Respon Kurang Cerdas (Apr 8 2026)
+- [x] Bot WA menjawab "oke" 2x saat pelanggan pertama kali chat "READY" — root cause: sanitasi menghapus link toko dari reply AI, sekarang link acestore.bot dipertahankan
+- [x] Link notif WA pegawai harus pakai domain permanen (acestore.bot) dan arahkan ke halaman penyiapan barang (/staff/preparation), bukan halaman pembeli
+- [x] Bot WA: sanitasi reply menghapus SEMUA URL termasuk link toko — fix: sekarang preserve link acestore.bot
+
+## Fix Login Redirect per Role (Apr 9 2026)
+- [x] Setelah login, redirect otomatis sesuai role: admin → /admin, pegawai → /staff/preparation, pembeli → /store
+- [x] PWA install dari acestore.bot → setelah buka APK, cek role tersimpan di localStorage dan redirect otomatis (admin → /admin, pegawai → /staff/preparation, pembeli → /store)
+
+## 3 APK Terpisah per Domain (Apr 9 2026)
+- [x] acestore.bot → khusus Pembeli (toko), langsung ke /store
+- [x] acestore.vip → khusus Admin (panel admin), langsung ke /admin
+- [x] whatsappbot.bot → khusus Pegawai (penyiapan barang), langsung ke /staff/preparation
+- [x] Manifest berbeda per domain (nama APK, ikon, start_url berbeda)
+- [x] Login di masing-masing domain hanya untuk role yang sesuai
+- [x] Update semua link notifikasi WA sesuai domain baru (admin → acestore.vip, pegawai → whatsappbot.bot, pembeli → acestore.bot)
+
+## Bug Bot WA - Jawab "OK" Terus (Apr 9 2026)
+- [x] Bot WA jawab "OK" berulang saat pelanggan chat — fix: larangan mutlak reply "OK" di system prompt + fallback filter otomatis ganti lazy reply + tambah alias "st" di produk recognition
+- [x] Bot WA MASIH jawab "OK" setelah fix sebelumnya — ROOT CAUSE: Wablas "Get Auto Reply From Webhook" mengirim HTTP response body "OK" sebagai pesan WA. FIX: ubah res.send("OK") → res.send("") di kedua tempat di webhookWhatsapp.ts
+
+## Bug Layar Putih Kosong (Apr 9 2026)
+- [x] acestore.vip menampilkan layar putih kosong di HP — FIX: code splitting dengan React.lazy, bundle turun dari 700KB→200KB gzipped
+- [x] Investigasi production deployment acestore.vip — JS bundle 2.77MB terlalu besar, SSL issue di custom domain
+- [x] Code splitting dengan React.lazy — initial bundle: 691KB/200KB gzip (dari 2.77MB/700KB gzip)
+- [x] Fix TypeScript errors di purchases.ts — exports sudah ada, error dari stale TS check
+
+## Bot WA Slow Response (Apr 10 2026)
+- [x] Investigasi dan fix bot WA slow response — FIX: fire-and-forget notif admin/system, paralel pre-AI queries, product cache 5min, LLM thinking=0, timeout 20s
+
+## Manajemen Chat WA Admin (Apr 10 2026)
+- [x] Backend: procedure hapus chat permanen (delete chat + messages) — sudah ada deleteContact
+- [x] Backend: procedure arsipkan chat — menggunakan status 'closed' + filter 'closed' di getChats
+- [x] Backend: procedure tandai selesai — sudah ada updateChatStatus
+- [x] Frontend: tombol hapus dan tandai selesai di setiap item chat list + header chat
+- [x] Frontend: filter Semua / Aktif / Belum Dibalas / Selesai / Foto di tab chat
+
+## Fraud Log Improvement (May 2026)
+- [x] Investigasi fraud detection logic saat ini
+- [x] Tambah rate limiting / spam flood detection (max 10 pesan/menit, auto-blacklist 20+)
+- [x] Tambah deteksi nomor baru mencurigakan (langsung kirim gambar tanpa chat)
+- [x] Tambah log pesan yang diblokir (blacklist activity log)
+- [x] Tambah deteksi pesan berulang (3+ duplikat dalam 5 menit)
+- [x] Tambah alert real-time ke admin WA saat fraud terdeteksi (spam flood + nomor baru)
+- [x] Update fraud log UI — tab baru "Aktivitas" dengan filter tipe, severity badges, stats
